@@ -14,6 +14,9 @@ RUN npm ci
 # 复制源代码
 COPY . .
 
+# 确保 public 目录存在（Next.js 可选，无则 COPY 会失败）
+RUN mkdir -p /app/public
+
 # 生成 Prisma Client
 RUN npx prisma generate
 
