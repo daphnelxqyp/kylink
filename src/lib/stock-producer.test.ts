@@ -95,7 +95,7 @@ describe('Stock Producer', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: Campaign 存在
       prismaMock.campaignMeta.findFirst.mockResolvedValue({
@@ -109,6 +109,7 @@ describe('Stock Producer', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -162,6 +163,7 @@ describe('Stock Producer', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -201,7 +203,7 @@ describe('Stock Producer', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: Campaign 存在
       prismaMock.campaignMeta.findFirst.mockResolvedValue({
@@ -215,6 +217,7 @@ describe('Stock Producer', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),

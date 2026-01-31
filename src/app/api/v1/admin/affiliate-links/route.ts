@@ -90,7 +90,8 @@ export async function POST(request: NextRequest) {
     return errorResponse('VALIDATION_ERROR', `缺少必填字段: ${missing.join(', ')}`, 422)
   }
 
-  let { userId, campaignId, url, enabled = true, priority = 0 } = data!
+  const { campaignId, url, enabled = true, priority = 0 } = data!
+  let { userId } = data!
 
   // 非管理员只能为自己创建链接
   if (authResult.user.role !== 'ADMIN') {

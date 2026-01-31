@@ -45,7 +45,7 @@ function mapAdminUser(user: {
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const users = await prisma.user.findMany({
       where: { deletedAt: null },

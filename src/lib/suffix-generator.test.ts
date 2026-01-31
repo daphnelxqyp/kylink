@@ -182,9 +182,9 @@ describe('Suffix Generator', () => {
         redirectChain: [],
       }
 
-      vi.mocked(proxySelector.getAvailableProxies).mockResolvedValue(mockProxyContext)
-      vi.mocked(proxySelector.selectAvailableProxy).mockResolvedValue(mockProxySelection)
-      vi.mocked(redirectTracker.trackRedirects).mockResolvedValue(mockTrackResult)
+      vi.mocked(proxySelector.getAvailableProxies).mockResolvedValue(mockProxyContext as any)
+      vi.mocked(proxySelector.selectAvailableProxy).mockResolvedValue(mockProxySelection as any)
+      vi.mocked(redirectTracker.trackRedirects).mockResolvedValue(mockTrackResult as any)
       vi.mocked(proxySelector.recordProxyUsage).mockResolvedValue()
 
       const result = await generateSuffix(mockRequest)
@@ -289,13 +289,13 @@ describe('Suffix Generator', () => {
         redirectChain: [],
       }
 
-      vi.mocked(proxySelector.getAvailableProxies).mockResolvedValue(mockProxyContext)
+      vi.mocked(proxySelector.getAvailableProxies).mockResolvedValue(mockProxyContext as any)
       vi.mocked(proxySelector.selectAvailableProxy)
-        .mockResolvedValueOnce(mockProxySelection1)
-        .mockResolvedValueOnce(mockProxySelection2)
+        .mockResolvedValueOnce(mockProxySelection1 as any)
+        .mockResolvedValueOnce(mockProxySelection2 as any)
       vi.mocked(redirectTracker.trackRedirects)
-        .mockResolvedValueOnce(mockTrackResultFail)
-        .mockResolvedValueOnce(mockTrackResultSuccess)
+        .mockResolvedValueOnce(mockTrackResultFail as any)
+        .mockResolvedValueOnce(mockTrackResultSuccess as any)
       vi.mocked(proxySelector.recordProxyUsage).mockResolvedValue()
 
       const result = await generateSuffix(mockRequest)
@@ -334,7 +334,7 @@ describe('Suffix Generator', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: Campaign 存在
       prismaMock.campaignMeta.findFirst.mockResolvedValue({
@@ -348,6 +348,7 @@ describe('Suffix Generator', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -403,9 +404,9 @@ describe('Suffix Generator', () => {
         redirectChain: [],
       }
 
-      vi.mocked(proxySelector.getAvailableProxies).mockResolvedValue(mockProxyContext)
-      vi.mocked(proxySelector.selectAvailableProxy).mockResolvedValue(mockProxySelection)
-      vi.mocked(redirectTracker.trackRedirects).mockResolvedValue(mockTrackResult)
+      vi.mocked(proxySelector.getAvailableProxies).mockResolvedValue(mockProxyContext as any)
+      vi.mocked(proxySelector.selectAvailableProxy).mockResolvedValue(mockProxySelection as any)
+      vi.mocked(redirectTracker.trackRedirects).mockResolvedValue(mockTrackResult as any)
       vi.mocked(proxySelector.recordProxyUsage).mockResolvedValue()
 
       const result = await generateSuffixBatch('user-123', 'campaign-123', 3)

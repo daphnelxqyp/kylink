@@ -275,7 +275,7 @@ async function importFromSheet(url: string, userId: string): Promise<SheetImport
             })
             result.affiliateLinksCreated++
           }
-        } catch (urlError) {
+        } catch (_urlError) {
           // URL 格式无效，跳过
           console.warn(`Invalid trackingUrl for campaign ${campaign.campaignId}: ${trackingUrl}`)
         }

@@ -563,7 +563,7 @@ async function fetchMerchantPage(
   // 规范化商家数据
   const merchants = rawList.map(raw => normalizeMerchant(raw, config.type))
 
-  const firstRaw = (rawList[0] || null) as Record<string, unknown> | null
+  const firstRaw = (rawList[0] || null) as unknown as Record<string, unknown> | null
   const responsePreview: Record<string, unknown> = {
     responseKeys: Object.keys(rawResponse || {}),
     dataKeys: Object.keys((data || {}) as Record<string, unknown>),

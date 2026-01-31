@@ -32,7 +32,7 @@ function parsePriority(value: unknown): number {
   return Number.isFinite(priority) ? Math.trunc(priority) : 0
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const providers = await prisma.proxyProvider.findMany({
       where: { deletedAt: null },

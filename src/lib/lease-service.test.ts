@@ -57,6 +57,7 @@ describe('Lease Service', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -64,7 +65,6 @@ describe('Lease Service', () => {
 
       // Mock: ClickState 存在，lastAppliedClicks = 50
       prismaMock.campaignClickState.findUnique.mockResolvedValue({
-        id: 'state-123',
         userId: 'user-123',
         campaignId: 'campaign-123',
         lastAppliedClicks: 50,
@@ -73,7 +73,7 @@ describe('Lease Service', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 更新 ClickState
       prismaMock.campaignClickState.update.mockResolvedValue({} as any)
@@ -92,12 +92,11 @@ describe('Lease Service', () => {
         sourceAffiliateLinkId: 'link-123',
         leasedAt: null,
         consumedAt: null,
-        failedAt: null,
         expiredAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 事务创建租约和更新库存
       prismaMock.$transaction.mockResolvedValue([
@@ -144,6 +143,7 @@ describe('Lease Service', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -151,7 +151,6 @@ describe('Lease Service', () => {
 
       // Mock: ClickState 存在，lastAppliedClicks = 100（等于 nowClicks）
       prismaMock.campaignClickState.findUnique.mockResolvedValue({
-        id: 'state-123',
         userId: 'user-123',
         campaignId: 'campaign-123',
         lastAppliedClicks: 100,
@@ -160,7 +159,7 @@ describe('Lease Service', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 更新 ClickState
       prismaMock.campaignClickState.update.mockResolvedValue({} as any)
@@ -280,6 +279,7 @@ describe('Lease Service', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -287,7 +287,6 @@ describe('Lease Service', () => {
 
       // Mock: ClickState 存在，lastAppliedClicks = 50
       prismaMock.campaignClickState.findUnique.mockResolvedValue({
-        id: 'state-123',
         userId: 'user-123',
         campaignId: 'campaign-123',
         lastAppliedClicks: 50,
@@ -296,7 +295,7 @@ describe('Lease Service', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 更新 ClickState
       prismaMock.campaignClickState.update.mockResolvedValue({} as any)
@@ -344,6 +343,7 @@ describe('Lease Service', () => {
         mccId: 'mcc-123',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -351,7 +351,6 @@ describe('Lease Service', () => {
 
       // Mock: ClickState 存在，lastAppliedClicks = 50
       prismaMock.campaignClickState.findUnique.mockResolvedValue({
-        id: 'state-123',
         userId: 'user-123',
         campaignId: 'campaign-123',
         lastAppliedClicks: 50,
@@ -360,7 +359,7 @@ describe('Lease Service', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 更新 ClickState
       prismaMock.campaignClickState.update.mockResolvedValue({} as any)
@@ -442,6 +441,7 @@ describe('Lease Service', () => {
         mccId: 'mcc-new',
         status: 'active',
         lastSyncedAt: new Date(),
+        lastImportedAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -452,7 +452,6 @@ describe('Lease Service', () => {
 
       // Mock: 创建 ClickState
       prismaMock.campaignClickState.create.mockResolvedValue({
-        id: 'state-new',
         userId: 'user-123',
         campaignId: 'campaign-new',
         lastAppliedClicks: 0,
@@ -461,7 +460,7 @@ describe('Lease Service', () => {
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 无活跃租约
       prismaMock.suffixLease.findFirst.mockResolvedValueOnce(null)
@@ -477,12 +476,11 @@ describe('Lease Service', () => {
         sourceAffiliateLinkId: 'link-123',
         leasedAt: null,
         consumedAt: null,
-        failedAt: null,
         expiredAt: null,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 事务创建租约和更新库存
       prismaMock.$transaction.mockResolvedValue([
@@ -500,9 +498,8 @@ describe('Lease Service', () => {
           ackedAt: null,
           errorMessage: null,
           deletedAt: null,
-          createdAt: new Date(),
           updatedAt: new Date(),
-        },
+        } as any,
         {} as any,
       ])
 
@@ -540,9 +537,8 @@ describe('Lease Service', () => {
         ackedAt: null,
         errorMessage: null,
         deletedAt: null,
-        createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 事务更新租约、库存和点击状态
       prismaMock.$transaction.mockResolvedValue([
@@ -597,9 +593,8 @@ describe('Lease Service', () => {
         ackedAt: new Date(),
         errorMessage: null,
         deletedAt: null,
-        createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       const result = await processSingleAck('user-123', mockAck)
 
@@ -632,9 +627,8 @@ describe('Lease Service', () => {
         ackedAt: null,
         errorMessage: null,
         deletedAt: null,
-        createdAt: new Date(),
         updatedAt: new Date(),
-      })
+      } as any)
 
       // Mock: 事务更新租约和库存（失败场景会释放库存回可用池）
       prismaMock.$transaction.mockResolvedValue([
