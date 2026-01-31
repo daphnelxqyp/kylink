@@ -61,3 +61,18 @@ logs
 
 # OS
 Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Backups
+backups/
+*.sql
+
+# SSL Certificates
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+
+# Deployment
+.env.production
