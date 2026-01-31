@@ -1,9 +1,9 @@
 # KyAds SuffixPool
 
-[![CI](https://github.com/YOUR_USERNAME/kylink/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/kylink/actions/workflows/ci.yml)
-[![Test Coverage](https://github.com/YOUR_USERNAME/kylink/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/YOUR_USERNAME/kylink/actions/workflows/test-coverage.yml)
-[![Code Quality](https://github.com/YOUR_USERNAME/kylink/actions/workflows/code-quality.yml/badge.svg)](https://github.com/YOUR_USERNAME/kylink/actions/workflows/code-quality.yml)
-[![codecov](https://codecov.io/gh/YOUR_USERNAME/kylink/branch/main/graph/badge.svg)](https://codecov.io/gh/YOUR_USERNAME/kylink)
+[![CI](https://github.com/daphnelxqyp/kylink/actions/workflows/ci.yml/badge.svg)](https://github.com/daphnelxqyp/kylink/actions/workflows/ci.yml)
+[![Test Coverage](https://github.com/daphnelxqyp/kylink/actions/workflows/test-coverage.yml/badge.svg)](https://github.com/daphnelxqyp/kylink/actions/workflows/test-coverage.yml)
+[![Code Quality](https://github.com/daphnelxqyp/kylink/actions/workflows/code-quality.yml/badge.svg)](https://github.com/daphnelxqyp/kylink/actions/workflows/code-quality.yml)
+[![codecov](https://codecov.io/gh/daphnelxqyp/kylink/branch/main/graph/badge.svg)](https://codecov.io/gh/daphnelxqyp/kylink)
 
 > **Google Ads Scripts 自动写入 Final URL Suffix 系统**
 
