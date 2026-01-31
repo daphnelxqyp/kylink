@@ -1,0 +1,101 @@
+name: Test Coverage
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # 每天 UTC 00:00 运行（北京时间 08:00）
+    - cron: '0 0 * * *'
+
+jobs:
+  coverage:
+    name: Test Coverage Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史，用于覆盖率对比
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage -- --run --reporter=verbose
+        env:
+          ALLOW_MOCK_SUFFIX: 'true'
+          MAX_BATCH_SIZE: '500'
+          STOCK_CONCURRENCY: '5'
+          CAMPAIGN_CONCURRENCY: '3'
+
+      - name: Generate coverage summary
+        run: |
+          echo "## Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat coverage/coverage-summary.txt 2>/dev/null || echo "Coverage summary not available"
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+      - name: Check coverage threshold
+        run: |
+          # 检查覆盖率是否达到阈值
+          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+          THRESHOLD=50
+
+          echo "Current coverage: $COVERAGE%"
+          echo "Threshold: $THRESHOLD%"
+
+          if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+            echo "❌ Coverage $COVERAGE% is below threshold $THRESHOLD%"
+            exit 1
+          else
+            echo "✅ Coverage $COVERAGE% meets threshold $THRESHOLD%"
+          fi
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+
+            const total = coverage.total;
+            const comment = `## 📊 Test Coverage Report
+
+            | Metric | Coverage | Status |
+            |--------|----------|--------|
+            | Statements | ${total.statements.pct}% | ${total.statements.pct >= 50 ? '✅' : '⚠️'} |
+            | Branches | ${total.branches.pct}% | ${total.branches.pct >= 50 ? '✅' : '⚠️'} |
+            | Functions | ${total.functions.pct}% | ${total.functions.pct >= 50 ? '✅' : '⚠️'} |
+            | Lines | ${total.lines.pct}% | ${total.lines.pct >= 50 ? '✅' : '⚠️'} |
+
+            **Total Coverage:** ${total.lines.pct}%
+
+            ${total.lines.pct >= 50 ? '✅ Coverage meets threshold (50%)' : '⚠️ Coverage below threshold (50%)'}
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

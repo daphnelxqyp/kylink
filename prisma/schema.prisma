@@ -1,0 +1,417 @@
+// =====================================================
+// KyAds SuffixPool Prisma Schema
+// 版本: 2.0
+// 日期: 2026-01-14
+// 调整: MySQL 适配 + 无外键 + 软删除
+// =====================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL") // 影子数据库，用于 Prisma Migrate
+  relationMode      = "prisma"                   // 禁用数据库外键，使用应用层关联
+}
+
+// -----------------------------------------------------
+// 1. User - 用户表
+// -----------------------------------------------------
+model User {
+  id              String     @id @default(uuid()) @db.Char(36)
+  email           String?    @db.VarChar(255)
+  name            String?    @db.VarChar(255)
+  apiKeyHash      String     @unique @db.VarChar(64)      // SHA256 哈希值
+  apiKeyPrefix    String     @db.VarChar(16)              // API Key 前缀，如 ky_live_a1b2
+  apiKeyCreatedAt DateTime?  @db.DateTime(3)
+  passwordHash    String?    @db.VarChar(128)             // 用户密码哈希
+  passwordSalt    String?    @db.VarChar(32)              // 密码盐
+  role            UserRole   @default(USER)               // 用户角色
+  spreadsheetId   String?    @db.VarChar(255)             // 绑定的 Google 表格 URL 列表（JSON 字符串）
+  status          UserStatus @default(active)
+  createdAt       DateTime   @default(now()) @db.DateTime(3)
+  updatedAt       DateTime   @updatedAt @db.DateTime(3)
+  deletedAt       DateTime?  @db.DateTime(3)              // 软删除时间
+
+  // 虚拟关联（不生成外键，仅用于 Prisma 查询）
+  campaigns      CampaignMeta[]
+  affiliateLinks AffiliateLink[]
+  suffixStocks   SuffixStockItem[]
+  suffixLeases   SuffixLease[]
+  clickStates    CampaignClickState[]
+  proxyUsages    ProxyExitIpUsage[]
+  auditLogs      AuditLog[]
+  assignedProxyProviders ProxyProvider[] @relation("ProxyProviderAssignedUser")
+  proxyProviderAssignments ProxyProviderUser[] @relation("UserProxyProviders")  // 多对多分配关联
+  affiliateNetworks  AffiliateNetwork[]   // 联盟网络
+  affiliateMerchants AffiliateMerchant[]  // 联盟商家
+
+  @@index([apiKeyPrefix])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+// -----------------------------------------------------
+// 2. CampaignMeta - Campaign 元数据（唯一数据源）
+// -----------------------------------------------------
+model CampaignMeta {
+  id             String         @id @default(uuid()) @db.Char(36)
+  userId         String         @db.Char(36)
+  campaignId     String         @db.VarChar(64)           // Google Ads Campaign ID
+  campaignName   String?        @db.VarChar(500)          // 广告系列名称
+  country        String?        @db.VarChar(500)          // 目标投放国家/地区定向
+  finalUrl       String?        @db.Text                  // 最终到达网址
+  cid            String         @db.VarChar(32)           // 子账号 CID
+  mccId          String         @db.VarChar(32)           // MCC ID
+  status         CampaignStatus @default(active)
+  lastSyncedAt   DateTime?      @db.DateTime(3)           // 最后同步时间
+  lastImportedAt DateTime?      @db.DateTime(3)           // 从表格导入时间
+  createdAt      DateTime       @default(now()) @db.DateTime(3)
+  updatedAt      DateTime       @updatedAt @db.DateTime(3)
+  deletedAt      DateTime?      @db.DateTime(3)           // 软删除时间
+
+  // 虚拟关联（应用层通过 userId 查询）
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, campaignId])
+  @@index([userId])
+  @@index([campaignId])
+  @@index([status])
+  @@index([mccId])
+  @@index([cid])
+  @@index([deletedAt])
+}
+
+enum CampaignStatus {
+  active
+  inactive
+}
+
+// -----------------------------------------------------
+// 3. AffiliateLink - 联盟链接
+// -----------------------------------------------------
+model AffiliateLink {
+  id         String    @id @default(uuid()) @db.Char(36)
+  userId     String    @db.Char(36)
+  campaignId String    @db.VarChar(64)                    // 关联的 Campaign ID
+  url        String    @db.Text                           // 联盟入口链接
+  enabled    Boolean   @default(true)
+  priority   Int       @default(0)                        // 优先级，数值越大优先级越高
+  createdAt  DateTime  @default(now()) @db.DateTime(3)
+  updatedAt  DateTime  @updatedAt @db.DateTime(3)
+  deletedAt  DateTime? @db.DateTime(3)                    // 软删除时间
+
+  // 虚拟关联
+  user         User              @relation(fields: [userId], references: [id])
+  suffixStocks SuffixStockItem[]
+
+  @@index([userId])
+  @@index([campaignId])
+  @@index([userId, campaignId])
+  @@index([enabled])
+  @@index([deletedAt])
+}
+
+// -----------------------------------------------------
+// 4. SuffixStockItem - Suffix 库存项
+// -----------------------------------------------------
+model SuffixStockItem {
+  id                    String            @id @default(uuid()) @db.Char(36)
+  userId                String            @db.Char(36)
+  campaignId            String            @db.VarChar(64)
+  finalUrlSuffix        String            @db.Text          // 可直接写入的 finalUrlSuffix
+  status                SuffixStockStatus @default(available)
+  exitIp                String?           @db.VarChar(45)   // 代理出口 IP（支持 IPv6）
+  sourceAffiliateLinkId String?           @db.Char(36)      // 来源联盟链接 ID
+  createdAt             DateTime          @default(now()) @db.DateTime(3)
+  leasedAt              DateTime?         @db.DateTime(3)   // 被租用时间
+  consumedAt            DateTime?         @db.DateTime(3)   // 被消费时间
+  expiredAt             DateTime?         @db.DateTime(3)   // 过期时间
+  deletedAt             DateTime?         @db.DateTime(3)   // 软删除时间
+
+  // 虚拟关联
+  user                User           @relation(fields: [userId], references: [id])
+  sourceAffiliateLink AffiliateLink? @relation(fields: [sourceAffiliateLinkId], references: [id])
+  leases              SuffixLease[]
+
+  @@index([userId])
+  @@index([campaignId])
+  @@index([userId, campaignId])
+  @@index([status])
+  @@index([userId, campaignId, status])
+  @@index([status, createdAt])                            // 过期库存查询优化
+  @@index([userId, campaignId, status, createdAt])        // 库存清理查询优化
+  @@index([sourceAffiliateLinkId])
+  @@index([deletedAt])
+}
+
+enum SuffixStockStatus {
+  available
+  leased
+  consumed
+  expired
+  invalid
+}
+
+// -----------------------------------------------------
+// 5. SuffixLease - Suffix 租约
+// -----------------------------------------------------
+model SuffixLease {
+  id                      String      @id @default(uuid()) @db.Char(36)
+  userId                  String      @db.Char(36)
+  campaignId              String      @db.VarChar(64)
+  suffixStockItemId       String      @db.Char(36)
+  idempotencyKey          String      @db.VarChar(128)     // campaignId:windowStartEpochSeconds
+  nowClicksAtLeaseTime    Int                              // 租用时的 nowClicks
+  windowStartEpochSeconds BigInt                           // 窗口开始时间戳
+  status                  LeaseStatus @default(leased)
+  leasedAt                DateTime    @default(now()) @db.DateTime(3)
+  ackedAt                 DateTime?   @db.DateTime(3)      // 回执时间
+  applied                 Boolean?                         // 是否成功写入
+  errorMessage            String?     @db.Text             // 失败原因
+  deletedAt               DateTime?   @db.DateTime(3)      // 软删除时间
+
+  // 虚拟关联
+  user            User            @relation(fields: [userId], references: [id])
+  suffixStockItem SuffixStockItem @relation(fields: [suffixStockItemId], references: [id])
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId])
+  @@index([campaignId])
+  @@index([userId, campaignId])
+  @@index([status])
+  @@index([status, leasedAt])                          // 租约回收查询优化
+  @@index([userId, status, leasedAt])                  // 用户租约回收查询优化
+  @@index([campaignId, status])                        // 检查活跃租约优化
+  @@index([suffixStockItemId])
+  @@index([deletedAt])
+}
+
+enum LeaseStatus {
+  leased
+  consumed
+  failed
+  expired
+}
+
+// -----------------------------------------------------
+// 6. CampaignClickState - Campaign 点击状态（一致性状态源）
+// 注意：此表不需要软删除，状态数据随 Campaign 生命周期管理
+// -----------------------------------------------------
+model CampaignClickState {
+  userId             String    @db.Char(36)
+  campaignId         String    @db.VarChar(64)
+  lastAppliedClicks  Int       @default(0)               // 上次成功换链时的 clicks
+  lastObservedClicks Int?                                // 最后观测到的 clicks
+  lastObservedAt     DateTime? @db.DateTime(3)           // 最后观测时间
+  updatedAt          DateTime  @updatedAt @db.DateTime(3)
+
+  // 虚拟关联
+  user User @relation(fields: [userId], references: [id])
+
+  @@id([userId, campaignId])
+  @@index([userId])
+}
+
+// -----------------------------------------------------
+// 7. ProxyExitIpUsage - 代理出口 IP 使用记录（用于去重）
+// 注意：此表记录会自动过期清理，不需要软删除
+// -----------------------------------------------------
+model ProxyExitIpUsage {
+  id         String   @id @default(uuid()) @db.Char(36)
+  userId     String   @db.Char(36)
+  campaignId String   @db.VarChar(64)
+  exitIp     String   @db.VarChar(45)                    // 出口 IP
+  usedAt     DateTime @default(now()) @db.DateTime(3)
+  expiresAt  DateTime @db.DateTime(3)                    // 去重过期时间（24小时后）
+
+  // 虚拟关联
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, campaignId, exitIp])                // 移除冗余的 @@index([userId, campaignId])，被此索引覆盖
+  @@index([expiresAt])
+}
+
+// -----------------------------------------------------
+// 8. AuditLog - 审计日志
+// 注意：审计日志是不可变的追溯记录，不需要软删除
+// -----------------------------------------------------
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Char(36)
+  userId       String?  @db.Char(36)
+  action       String   @db.VarChar(64)                  // 操作类型：lease, ack, sync 等
+  resourceType String?  @db.VarChar(64)                  // 资源类型：campaign, suffix 等
+  resourceId   String?  @db.VarChar(128)                 // 资源 ID
+  metadata     Json?                                     // 额外元数据
+  ipAddress    String?  @db.VarChar(45)                  // 请求 IP
+  userAgent    String?  @db.Text                         // User-Agent
+  statusCode   Int?                                      // 响应状态码
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+
+  // 虚拟关联
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([userId, action, createdAt])
+}
+
+// -----------------------------------------------------
+// 9. ProxyProvider - 代理供应商
+// -----------------------------------------------------
+model ProxyProvider {
+  id               String    @id @default(uuid()) @db.Char(36)
+  name             String    @db.VarChar(255)
+  priority         Int       @default(0)
+  host             String    @db.VarChar(255)
+  port             Int       @default(8080)
+  usernameTemplate String?   @db.VarChar(255)
+  password         String?   @db.VarChar(255)
+  enabled          Boolean   @default(true)
+  assignedUserId   String?   @db.Char(36)  // 保留兼容，后续可废弃
+  createdAt        DateTime  @default(now()) @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @db.DateTime(3)
+  deletedAt        DateTime? @db.DateTime(3)
+
+  assignedUser User? @relation("ProxyProviderAssignedUser", fields: [assignedUserId], references: [id])
+  // 多用户分配关联
+  assignedUsers ProxyProviderUser[]
+
+  @@index([enabled])
+  @@index([assignedUserId])
+  @@index([deletedAt])
+}
+
+// -----------------------------------------------------
+// 10. ProxyProviderUser - 代理供应商与用户多对多关联表
+// -----------------------------------------------------
+model ProxyProviderUser {
+  id              String   @id @default(uuid()) @db.Char(36)
+  proxyProviderId String   @db.Char(36)
+  userId          String   @db.Char(36)
+  createdAt       DateTime @default(now()) @db.DateTime(3)
+
+  proxyProvider ProxyProvider @relation(fields: [proxyProviderId], references: [id])
+  user          User          @relation("UserProxyProviders", fields: [userId], references: [id])
+
+  @@unique([proxyProviderId, userId])
+  @@index([proxyProviderId])
+  @@index([userId])
+}
+
+// -----------------------------------------------------
+// 11. AffiliateNetwork - 联盟网络（联盟平台）
+// -----------------------------------------------------
+model AffiliateNetwork {
+  id        String        @id @default(uuid()) @db.Char(36)
+  userId    String        @db.Char(36)
+  name      String        @db.VarChar(100)           // 联盟全称，如 "Rewardoo"
+  shortName String        @db.VarChar(20)            // 联盟简称，如 "RW"（用于 API 查询）
+  apiUrl    String?       @db.VarChar(500)           // 联盟 API 地址（可选）
+  apiKey    String?       @db.VarChar(255)           // 联盟 API 密钥（可选，加密存储）
+  status    NetworkStatus @default(active)
+  createdAt DateTime      @default(now()) @db.DateTime(3)
+  updatedAt DateTime      @updatedAt @db.DateTime(3)
+  deletedAt DateTime?     @db.DateTime(3)            // 软删除时间
+
+  // 虚拟关联
+  user      User                @relation(fields: [userId], references: [id])
+  merchants AffiliateMerchant[]
+
+  @@unique([userId, shortName])                      // 同一用户下联盟简称唯一
+  @@index([userId])
+  @@index([shortName])
+  @@index([deletedAt])
+}
+
+enum NetworkStatus {
+  active
+  inactive
+}
+
+// -----------------------------------------------------
+// 12. Alert - 系统告警（持久化存储）
+// -----------------------------------------------------
+model Alert {
+  id             String      @id @default(uuid()) @db.Char(36)
+  userId         String?     @db.Char(36)              // 关联用户（系统级告警可为空）
+  type           AlertType                              // 告警类型
+  level          AlertLevel                             // 告警级别
+  title          String      @db.VarChar(500)          // 告警标题
+  message        String      @db.Text                  // 告警详细信息
+  metadata       Json?                                 // 额外元数据
+  acknowledged   Boolean     @default(false)           // 是否已确认
+  acknowledgedAt DateTime?   @db.DateTime(3)           // 确认时间
+  createdAt      DateTime    @default(now()) @db.DateTime(3)
+  deletedAt      DateTime?   @db.DateTime(3)           // 软删除时间
+
+  @@index([userId])
+  @@index([type])
+  @@index([level])
+  @@index([acknowledged])
+  @@index([createdAt])
+  @@index([userId, acknowledged, createdAt])           // 未读告警查询优化
+  @@index([deletedAt])
+}
+
+enum AlertType {
+  low_stock
+  lease_timeout
+  high_failure_rate
+  no_stock_frequent
+  system_health
+}
+
+enum AlertLevel {
+  info
+  warning
+  critical
+}
+
+// -----------------------------------------------------
+// 13. AffiliateMerchant - 联盟商家（tracking_url 数据源）
+// -----------------------------------------------------
+model AffiliateMerchant {
+  id             String    @id @default(uuid()) @db.Char(36)
+  userId         String    @db.Char(36)
+  networkId      String    @db.Char(36)              // 关联的联盟网络 ID
+  mcid           String    @db.VarChar(64)           // 联盟平台商家组合 ID（如 "1001hobbiesdeaaaaa"）
+  mid            String    @db.VarChar(64)           // 联盟平台商家 ID（如 "156115"）
+  merchantName   String?   @db.VarChar(500)          // 商家名称
+  siteUrl        String?   @db.Text                  // 商家完整网站地址
+  domain         String    @db.VarChar(255)          // 提取的域名（用于查询，如 "1001hobbies.de"）
+  trackingUrl    String    @db.Text                  // 追踪链接（主要返回字段）
+  merchantStatus String?   @db.VarChar(20)           // 商家状态（Online/Offline）
+  relationship   String?   @db.VarChar(20)           // 关系状态（Joined/Pending）
+  lastSyncedAt   DateTime? @db.DateTime(3)           // 最后同步时间
+  createdAt      DateTime  @default(now()) @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @db.DateTime(3)
+  deletedAt      DateTime? @db.DateTime(3)           // 软删除时间
+
+  // 虚拟关联
+  user    User             @relation(fields: [userId], references: [id])
+  network AffiliateNetwork @relation(fields: [networkId], references: [id])
+
+  @@unique([userId, networkId, mid])                 // 同一用户+同一联盟下 mid 唯一
+  @@unique([userId, networkId, mcid])                // 同一用户+同一联盟下 mcid 唯一
+  @@index([userId])
+  @@index([networkId])
+  @@index([mcid])
+  @@index([domain])
+  @@index([userId, networkId, domain])               // 核心查询索引：联盟+域名
+  @@index([userId, domain])                          // 按域名快速查询
+  @@index([deletedAt])
+}
