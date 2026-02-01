@@ -1,3 +1,6 @@
+# 使用预构建镜像部署（适用于小内存服务器）
+# 用法：docker-compose -f docker-compose.prebuilt.yml up -d
+
 services:
   # MySQL 数据库
   mysql:
@@ -23,15 +26,9 @@ services:
       timeout: 5s
       retries: 5
 
-  # Next.js 应用
-  # 方式1：本地构建（小内存服务器慎用）
-  # 方式2：使用预构建镜像（推荐），设置环境变量 USE_PREBUILT_IMAGE=1
+  # Next.js 应用（使用 GitHub Container Registry 预构建镜像）
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # 如需使用 GitHub Container Registry 预构建镜像，取消下行注释并注释掉 build 部分
-    # image: ghcr.io/daphnelxqyp/kylink:latest
+    image: ghcr.io/daphnelxqyp/kylink:latest
     container_name: kylink-app
     restart: always
     ports:
