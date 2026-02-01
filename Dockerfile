@@ -35,9 +35,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=51001
 
-# Prisma 查询引擎依赖 libssl.so.1.1（Alpine 3.17+ 默认仅 OpenSSL 3），需安装兼容层
-# 参见 https://pris.ly/d/system-requirements
-RUN apk add --no-cache openssl1.1-compat
+# 注意：Prisma schema 已配置 binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+# Alpine 3.19+ 不再提供 openssl1.1-compat，Prisma 5.x 已原生支持 OpenSSL 3.0
+# 无需安装兼容包，Prisma 会自动使用 OpenSSL 3.0 的查询引擎
 
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs

@@ -472,21 +472,26 @@ truncate -s 0 /var/lib/docker/containers/*/*-json.log
 - `Unable to require(...libquery_engine-linux-musl.so.node)`
 - `Error loading shared library libssl.so.1.1: No such file or directory`
 
-**原因：** 生产镜像基于 Alpine（Node 20-alpine），Alpine 3.17+ 默认使用 OpenSSL 3，而 Prisma 查询引擎可能依赖 OpenSSL 1.1。
+**原因：** 
+- Alpine 3.19+ 已移除 `openssl1.1-compat` 包
+- Prisma schema 已配置 `binaryTargets = ["native", "linux-musl-openssl-3.0.x"]`，应使用 OpenSSL 3.0 的查询引擎
 
 **解决方案：**
 
-1. 确保使用**当前项目**的 Dockerfile（已包含 `openssl1.1-compat`）重新构建并部署：
+1. 确保使用**当前项目**的 Dockerfile 和 Prisma schema（已配置 OpenSSL 3.0 支持）重新构建并部署：
    ```bash
-   # 拉取最新代码（含修复后的 Dockerfile）
+   # 拉取最新代码
    git pull origin main
 
    docker-compose build --no-cache app
    docker-compose up -d app
    ```
-2. 若自行修改过 Dockerfile，在 runner 阶段加入：
-   ```dockerfile
-   RUN apk add --no-cache openssl1.1-compat
+2. 若仍遇到 OpenSSL 错误，检查 Prisma schema 中的 `binaryTargets` 是否包含 `linux-musl-openssl-3.0.x`：
+   ```prisma
+   generator client {
+     provider      = "prisma-client-js"
+     binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+   }
    ```
 3. 参考 [Prisma 系统要求](https://pris.ly/d/system-requirements)。
 
