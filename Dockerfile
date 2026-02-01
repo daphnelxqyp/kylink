@@ -20,9 +20,14 @@ RUN mkdir -p /app/public
 # 生成 Prisma Client
 RUN npx prisma generate
 
-# 构建应用：禁用遥测避免非交互式构建卡住，限制内存降低 OOM 导致假死
+# 构建应用：针对小内存服务器（<= 2GB）的极限优化
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+# 限制内存为 1GB，强制单线程编译
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+# 禁用所有缓存和并行处理
+ENV NEXT_WEBPACK_CACHE=false
+# 单线程编译（关键！大幅减少内存）
+ENV UV_THREADPOOL_SIZE=1
 RUN npm run build
 
 # 生产阶段
