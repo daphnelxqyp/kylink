@@ -20,7 +20,9 @@ RUN mkdir -p /app/public
 # 生成 Prisma Client
 RUN npx prisma generate
 
-# 构建应用
+# 构建应用：禁用遥测避免非交互式构建卡住，限制内存降低 OOM 导致假死
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 RUN npm run build
 
 # 生产阶段
@@ -32,6 +34,10 @@ WORKDIR /app
 # 设置环境变量
 ENV NODE_ENV=production
 ENV PORT=51001
+
+# Prisma 查询引擎依赖 libssl.so.1.1（Alpine 3.17+ 默认仅 OpenSSL 3），需安装兼容层
+# 参见 https://pris.ly/d/system-requirements
+RUN apk add --no-cache openssl1.1-compat
 
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs

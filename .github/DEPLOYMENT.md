@@ -465,6 +465,31 @@ docker system prune -a --volumes
 truncate -s 0 /var/lib/docker/containers/*/*-json.log
 ```
 
+### 问题 6：Prisma 引擎与系统不兼容（登录/接口报错）
+
+**症状：** 访问登录页或调用接口时报错：
+
+- `Unable to require(...libquery_engine-linux-musl.so.node)`
+- `Error loading shared library libssl.so.1.1: No such file or directory`
+
+**原因：** 生产镜像基于 Alpine（Node 20-alpine），Alpine 3.17+ 默认使用 OpenSSL 3，而 Prisma 查询引擎可能依赖 OpenSSL 1.1。
+
+**解决方案：**
+
+1. 确保使用**当前项目**的 Dockerfile（已包含 `openssl1.1-compat`）重新构建并部署：
+   ```bash
+   # 拉取最新代码（含修复后的 Dockerfile）
+   git pull origin main
+
+   docker-compose build --no-cache app
+   docker-compose up -d app
+   ```
+2. 若自行修改过 Dockerfile，在 runner 阶段加入：
+   ```dockerfile
+   RUN apk add --no-cache openssl1.1-compat
+   ```
+3. 参考 [Prisma 系统要求](https://pris.ly/d/system-requirements)。
+
 ---
 
 ## 📞 获取帮助
