@@ -6,6 +6,7 @@
 
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { errorResponse, parseJsonBody, successResponse } from '@/lib/utils'
 
 interface AdminAssignProxyProviderRequest {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest, context: { params: { id: string
     }
 
     // 使用事务更新分配关系
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // 1. 删除该代理商的所有现有分配
       await tx.proxyProviderUser.deleteMany({
         where: { proxyProviderId: providerId },
