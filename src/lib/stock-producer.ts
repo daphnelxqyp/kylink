@@ -108,6 +108,16 @@ export interface BatchReplenishResult {
   details: ReplenishResult[]
 }
 
+// 补货进度回调类型
+export interface ReplenishProgress {
+  stage: 'init' | 'processing' | 'done' | 'error'
+  current: number
+  total: number
+  message: string
+  currentCampaign?: string
+  result?: ReplenishResult
+}
+
 /**
  * 计算 campaign 的动态低水位
  * 基于过去 24 小时的消费速率
@@ -506,52 +516,129 @@ export async function getEligibleCampaigns(): Promise<Array<{
  * - 联盟链接不为空
  * 
  * @param force 是否强制补货（忽略水位检查）
+ * @param onProgress 可选的进度回调函数（用于 SSE 流）
  */
-export async function replenishAllLowStock(force: boolean = false): Promise<BatchReplenishResult> {
+export async function replenishAllLowStock(
+  force: boolean = false,
+  onProgress?: (progress: ReplenishProgress) => void
+): Promise<BatchReplenishResult> {
   let replenished = 0
   let skipped = 0
   let errors = 0
+  const results: ReplenishResult[] = []
 
   try {
     // 1. 获取符合条件的 campaign 列表
-    const eligibleCampaigns = await getEligibleCampaigns()
-    
-    console.log(`[Stock] 找到 ${eligibleCampaigns.length} 个符合条件的 Campaign（状态启用 + 国家不为空 + 联盟链接不为空）${force ? '（强制补货模式）' : ''}`)
-    console.log(`[Stock] Campaign 并发数: ${CAMPAIGN_CONCURRENCY}, 单 Campaign 内并发数: ${STOCK_CONCURRENCY}`)
-
-    const startTime = Date.now()
-
-    // 2. 并发处理多个 Campaign（使用并发限制器）
-    const campaignLimit = createConcurrencyLimiter(CAMPAIGN_CONCURRENCY)
-    
-    const replenishTasks = eligibleCampaigns.map(campaign => {
-      return campaignLimit(async () => {
-        return replenishCampaign(campaign.userId, campaign.campaignId, force)
-      })
+    onProgress?.({
+      stage: 'init',
+      current: 0,
+      total: 0,
+      message: '正在获取 Campaign 列表...',
     })
 
-    const results = await Promise.all(replenishTasks)
+    const eligibleCampaigns = await getEligibleCampaigns()
+    const totalCampaigns = eligibleCampaigns.length
+    
+    console.log(`[Stock] 找到 ${totalCampaigns} 个符合条件的 Campaign（状态启用 + 国家不为空 + 联盟链接不为空）${force ? '（强制补货模式）' : ''}`)
+    console.log(`[Stock] Campaign 并发数: ${CAMPAIGN_CONCURRENCY}, 单 Campaign 内并发数: ${STOCK_CONCURRENCY}`)
 
-    // 统计结果
-    for (const result of results) {
-      switch (result.status) {
-        case 'success':
-          replenished++
-          break
-        case 'skipped':
-          skipped++
-          break
-        case 'error':
-          errors++
-          break
+    onProgress?.({
+      stage: 'init',
+      current: 0,
+      total: totalCampaigns,
+      message: `找到 ${totalCampaigns} 个符合条件的 Campaign`,
+    })
+
+    if (totalCampaigns === 0) {
+      onProgress?.({
+        stage: 'done',
+        current: 0,
+        total: 0,
+        message: '没有找到需要补货的 Campaign',
+      })
+      return {
+        totalCampaigns: 0,
+        replenished: 0,
+        skipped: 0,
+        errors: 0,
+        details: [],
       }
     }
 
+    const startTime = Date.now()
+    let processedCount = 0
+
+    // 2. 顺序处理每个 Campaign（为了更好的进度反馈）
+    // 使用并发限制器控制同时处理的数量
+    const campaignLimit = createConcurrencyLimiter(CAMPAIGN_CONCURRENCY)
+    
+    // 创建所有任务，但使用并发限制器控制执行
+    const tasks = eligibleCampaigns.map((campaign, index) => {
+      return campaignLimit(async () => {
+        // 发送开始处理的进度
+        onProgress?.({
+          stage: 'processing',
+          current: index + 1,
+          total: totalCampaigns,
+          message: `正在处理: ${campaign.campaignName || campaign.campaignId}`,
+          currentCampaign: campaign.campaignId,
+        })
+
+        const result = await replenishCampaign(campaign.userId, campaign.campaignId, force)
+        
+        // 统计结果
+        switch (result.status) {
+          case 'success':
+            replenished++
+            break
+          case 'skipped':
+            skipped++
+            break
+          case 'error':
+            errors++
+            break
+        }
+        
+        processedCount++
+        results.push(result)
+
+        // 发送完成单个任务的进度
+        const statusEmoji = result.status === 'success' ? '✅' : result.status === 'skipped' ? '⏭️' : '❌'
+        const statusText = result.status === 'success' 
+          ? `+${result.producedCount} 条` 
+          : result.status === 'skipped' 
+            ? '已跳过' 
+            : '失败'
+        
+        onProgress?.({
+          stage: 'processing',
+          current: processedCount,
+          total: totalCampaigns,
+          message: `${statusEmoji} ${campaign.campaignName || campaign.campaignId}: ${statusText}`,
+          currentCampaign: campaign.campaignId,
+          result,
+        })
+
+        return result
+      })
+    })
+
+    // 等待所有任务完成
+    await Promise.all(tasks)
+
     const elapsed = Date.now() - startTime
-    console.log(`[Stock] 批量补货完成: ${results.length} campaigns, ${elapsed}ms (${(elapsed / 1000).toFixed(1)}s)`)
+    console.log(`[Stock] 批量补货完成: ${totalCampaigns} campaigns, ${elapsed}ms (${(elapsed / 1000).toFixed(1)}s)`)
+
+    // 发送完成进度
+    onProgress?.({
+      stage: 'done',
+      current: totalCampaigns,
+      total: totalCampaigns,
+      message: `补货完成！成功: ${replenished}, 跳过: ${skipped}, 失败: ${errors}`,
+    })
 
     return {
-      totalCampaigns: eligibleCampaigns.length,
+      totalCampaigns,
       replenished,
       skipped,
       errors,
@@ -560,6 +647,14 @@ export async function replenishAllLowStock(force: boolean = false): Promise<Batc
 
   } catch (error) {
     console.error('Batch replenish error:', error)
+    
+    onProgress?.({
+      stage: 'error',
+      current: 0,
+      total: 0,
+      message: error instanceof Error ? error.message : '批量补货失败',
+    })
+
     return {
       totalCampaigns: 0,
       replenished: 0,
