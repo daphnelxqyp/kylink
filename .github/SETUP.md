@@ -27,7 +27,7 @@ git add .
 git commit -m "Initial commit with CI/CD setup"
 
 # 添加远程仓库（替换为你的仓库地址）
-git remote add origin https://github.com/YOUR_USERNAME/kylink.git
+git remote add origin https://github.com/daphnelxqyp/kylink.git
 
 # 推送到 GitHub
 git push -u origin main

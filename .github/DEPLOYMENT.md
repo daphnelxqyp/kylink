@@ -6,10 +6,10 @@
 
 - [服务器要求](#服务器要求)
 - [部署前准备](#部署前准备)
-- [快速部署](#快速部署)
-- [详细部署步骤](#详细部署步骤)
-- [SSL 证书配置](#ssl-证书配置)
-- [监控和维护](#监控和维护)
+- [无 Docker 小白版（推荐）](#无-docker-小白版推荐)
+- [（可选）Docker 部署](#可选docker-部署)
+- [SSL 证书配置（无 Docker / Nginx）](#ssl-证书配置无-docker--nginx)
+- [监控和维护（无 Docker / systemd）](#监控和维护无-docker--systemd)
 - [故障排查](#故障排查)
 
 ---
@@ -43,7 +43,7 @@
 3. 配置安全组规则：
    - 开放端口：80 (HTTP)
    - 开放端口：443 (HTTPS)
-   - 开放端口：51001 (应用端口，可选)
+   - 开放端口：51001 (应用端口，**不建议对公网开放**；建议仅本机监听，由 Nginx 反代)
    - 开放端口：22 (SSH)
 
 ### 2. 配置域名（可选）
@@ -70,51 +70,33 @@ git push origin main
 
 ---
 
-## 🚀 快速部署
+## ✅ 无 Docker 小白版（推荐）
 
-### 方式一：使用部署脚本（推荐）
+> 适用于：刚买的服务器（Debian 13+ / Ubuntu 22.04+），**不使用 Docker**，域名已解析到服务器（例如你的 `https://xc.kyads.net/`）。
+>
+> 本流程目标：仅对公网开放 **80/443**，应用仅本机监听 `127.0.0.1:51001`，由 Nginx 反向代理；使用 `systemd` 守护进程，重启不掉线。
 
-```bash
-# 1. SSH 连接到服务器
-ssh root@your-server-ip
+### 0. 你需要准备的信息（先写下来）
 
-# 2. 克隆代码
-git clone https://github.com/daphnelxqyp/kylink.git
-cd kylink
+- **域名**：`xc.kyads.net`
+- **数据库名**：`kyads_suffixpool`
+- **数据库用户/密码**：例如 `kylink` / `强密码`
+- **两段密钥**：`NEXTAUTH_SECRET`、`CRON_SECRET`（下面会教你生成）
 
-# 3. 配置环境变量
-cp .env.production .env
-nano .env  # 编辑配置文件
-
-# 4. 运行部署脚本
-chmod +x deploy.sh
-./deploy.sh
-```
-
-### 方式二：手动部署
-
-参见 [详细部署步骤](#详细部署步骤)
-
----
-
-## 🧭 Debian 13.3 无 Docker 一步步教程（小白版）
-
-> 适用于：全新 Debian 13.3 64 位服务器，不使用 Docker。
-
-### 步骤 1：SSH 连接服务器
+### 1. SSH 连接服务器
 
 ```bash
 ssh root@your-server-ip
 ```
 
-### 步骤 2：更新系统并安装基础工具
+### 2. 更新系统 + 安装基础工具
 
 ```bash
 apt update && apt -y upgrade
-apt -y install git curl unzip ca-certificates gnupg lsb-release build-essential
+apt -y install git curl ca-certificates gnupg lsb-release build-essential
 ```
 
-### 步骤 3：安装 Node.js 20（推荐）
+### 3. 安装 Node.js 20（推荐）
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -123,96 +105,118 @@ node -v
 npm -v
 ```
 
-### 步骤 4：安装并配置 MySQL
+### 4. 安装并启动数据库（Debian 13 默认是 MariaDB）
 
 ```bash
-apt -y install mysql-server
-systemctl enable mysql
-systemctl start mysql
+# Debian 13 官方源默认提供 MariaDB（可替代 MySQL 使用）
+apt -y install mariadb-server
+systemctl enable mariadb
+systemctl start mariadb
 ```
 
-创建数据库和用户（示例）：
+创建数据库和用户（把密码换成你自己的强密码）：
 
 ```bash
-mysql -u root <<'SQL'
+mariadb -u root <<'SQL'
 CREATE DATABASE kyads_suffixpool DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'kylink'@'localhost' IDENTIFIED BY 'YourStrongPassword123!';
+CREATE USER 'kylink'@'localhost' IDENTIFIED BY 'CHANGE_ME_STRONG_PASSWORD';
 GRANT ALL PRIVILEGES ON kyads_suffixpool.* TO 'kylink'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 ```
 
-### 步骤 5：安装 Nginx
+### 5. 创建运行用户（推荐）并拉取代码到 `/opt/kylink`
 
 ```bash
-apt -y install nginx
-systemctl enable nginx
-systemctl start nginx
+useradd -m -s /bin/bash kylink || true
+mkdir -p /opt/kylink
+chown -R kylink:kylink /opt/kylink
 ```
-
-### 步骤 6：克隆代码
 
 ```bash
-cd /root
-git clone https://github.com/daphnelxqyp/kylink.git
-cd /root/kylink
+sudo -u kylink bash -lc '
+cd /opt
+git clone https://github.com/daphnelxqyp/kylink.git kylink
+cd /opt/kylink
+'
 ```
 
-### 步骤 7：配置环境变量
+### 6. 配置环境变量（重要：不要直接照搬仓库里的 `.env.production`）
 
-```bash
-cp .env.production .env
-nano .env
-```
+> 说明：仓库内的 `.env.production` 主要偏 Docker 场景（例如 `DATABASE_URL` 的 host 可能是 `mysql` 容器名），无 Docker 必须改为 `127.0.0.1`。
+>
+> ✅ 建议把生产密钥放在 `/etc/kylink/kylink.env`，并限制权限（下面第 8 步会做）。
 
-必须修改的配置（示例）：
-
-```bash
-DATABASE_URL="mysql://kylink:YourStrongPassword123!@127.0.0.1:3306/kyads_suffixpool"
-NEXTAUTH_SECRET="your-nextauth-secret-at-least-32-characters-long"
-NEXTAUTH_URL="https://your-domain.com"
-NEXT_PUBLIC_API_BASE_URL="https://your-domain.com"
-CRON_SECRET="your-cron-secret-here"
-ALLOW_MOCK_SUFFIX="false"
-```
-
-生成安全密钥：
+先生成安全密钥（复制输出值备用）：
 
 ```bash
 openssl rand -base64 32   # NEXTAUTH_SECRET
 openssl rand -hex 32      # CRON_SECRET
 ```
 
-### 步骤 8：安装依赖并构建
+### 7. 安装依赖 + 初始化数据库 + 构建
 
 ```bash
+sudo -u kylink bash -lc '
+cd /opt/kylink
 npm ci
-npm run db:generate
 npm run db:push
 npm run build
+'
 ```
 
-### 步骤 9：创建管理员用户
+### 8. 用 systemd 守护服务（无 Docker）
+
+创建环境变量文件（把 `CHANGE_ME_*` 全部替换成你的真实值；域名用你的 `xc.kyads.net`）：
 
 ```bash
-npx ts-node --compiler-options '{"module":"commonjs"}' scripts/create-admin.ts
+mkdir -p /etc/kylink
+cat >/etc/kylink/kylink.env <<'ENV'
+NODE_ENV=production
+PORT=51001
+
+# 数据库（无 Docker：127.0.0.1）
+DATABASE_URL="mysql://kylink:CHANGE_ME_STRONG_PASSWORD@127.0.0.1:3306/kyads_suffixpool"
+
+# NextAuth
+NEXTAUTH_URL="https://xc.kyads.net"
+NEXTAUTH_SECRET="CHANGE_ME_NEXTAUTH_SECRET"
+
+# 前端请求后端 API 的基地址
+NEXT_PUBLIC_API_BASE_URL="https://xc.kyads.net"
+
+# 定时任务密钥
+CRON_SECRET="CHANGE_ME_CRON_SECRET"
+
+# 生产环境务必关闭 mock
+ALLOW_MOCK_SUFFIX=false
+
+# 其余可选项（按需填写）
+PROXY_API_URL=""
+PROXY_API_KEY=""
+MAX_BATCH_SIZE=500
+STOCK_CONCURRENCY=5
+CAMPAIGN_CONCURRENCY=3
+ENV
+
+# 让 systemd 与 kylink 用户都能读取（但其他用户不可读）
+chown root:kylink /etc/kylink/kylink.env
+chmod 640 /etc/kylink/kylink.env
 ```
 
-### 步骤 10：用 systemd 启动并守护服务
-
-创建服务文件：
+创建 `systemd` 服务：
 
 ```bash
 cat >/etc/systemd/system/kylink.service <<'SERVICE'
 [Unit]
-Description=KyLink Next.js App
+Description=KyLink (Next.js)
 After=network.target mysql.service
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/kylink
-Environment=NODE_ENV=production
+User=kylink
+WorkingDirectory=/opt/kylink
+EnvironmentFile=/etc/kylink/kylink.env
 ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=5
@@ -222,7 +226,7 @@ WantedBy=multi-user.target
 SERVICE
 ```
 
-启动服务：
+启动并验证：
 
 ```bash
 systemctl daemon-reload
@@ -231,15 +235,40 @@ systemctl start kylink
 systemctl status kylink --no-pager
 ```
 
-### 步骤 11：配置 Nginx 反向代理
+```bash
+curl -fsS http://127.0.0.1:51001/api/health
+```
 
-创建站点配置：
+如果 `systemctl status kylink` 显示不断重启（`activating (auto-restart)`），先看日志定位原因：
+
+```bash
+journalctl -u kylink -n 200 --no-pager
+```
+
+最常见报错之一是“找不到生产构建”，说明你忘了执行 `npm run build`（`.next` 目录不存在）。修复方式：
+
+```bash
+sudo -u kylink bash -lc 'cd /opt/kylink && npm run build'
+systemctl restart kylink
+```
+
+### 9. 安装 Nginx 并做反向代理（先 HTTP）
+
+```bash
+apt -y install nginx
+systemctl enable nginx
+systemctl start nginx
+```
+
+创建站点配置（域名改成你的 `xc.kyads.net`）：
 
 ```bash
 cat >/etc/nginx/sites-available/kylink <<'NGINX'
 server {
     listen 80;
-    server_name your-domain.com;
+    server_name xc.kyads.net;
+
+    client_max_body_size 20m;
 
     location / {
         proxy_pass http://127.0.0.1:51001;
@@ -255,36 +284,83 @@ server {
 NGINX
 ```
 
-启用配置并重启 Nginx：
+启用并检查配置：
 
 ```bash
-ln -s /etc/nginx/sites-available/kylink /etc/nginx/sites-enabled/kylink
+ln -sf /etc/nginx/sites-available/kylink /etc/nginx/sites-enabled/kylink
 nginx -t
 systemctl reload nginx
 ```
 
-### 步骤 12：开放端口（如有防火墙）
-
-如果你启用了防火墙（如 UFW）：
+验证域名 HTTP 是否通：
 
 ```bash
-ufw allow 22
-ufw allow 80
-ufw allow 443
-ufw enable
-ufw status
+curl -I http://xc.kyads.net
+curl -fsS http://xc.kyads.net/api/health
 ```
 
-### 步骤 13：验证部署
+### 10. 配置 HTTPS（Let's Encrypt）
+
+> 下面会自动修改 Nginx 配置并配置续期。
 
 ```bash
-curl http://127.0.0.1:51001/api/health
-curl http://your-domain.com/health
+apt -y install certbot python3-certbot-nginx
+certbot --nginx -d xc.kyads.net
+```
+
+验证 HTTPS：
+
+```bash
+curl -fsS https://xc.kyads.net/api/health
+```
+
+检查自动续期（建议执行一次 dry-run）：
+
+```bash
+certbot renew --dry-run
+```
+
+### 11. 创建管理员账号（可选，但通常需要）
+
+> 注意：`create-admin.ts` 需要读到 `DATABASE_URL` 等环境变量。
+> 如果你使用 `sudo -u kylink` 手动执行，请先加载 `/etc/kylink/kylink.env`。
+>
+> 另外，如果项目未安装 `ts-node`，`npx` 可能会询问 “Ok to proceed?”。
+> 用 `npx --yes ts-node@...` 可以避免交互提示。
+
+```bash
+sudo -u kylink bash -lc '
+cd /opt/kylink
+set -a
+source /etc/kylink/kylink.env
+set +a
+npx --yes ts-node@10.9.2 --compiler-options "{\"module\":\"commonjs\"}" scripts/create-admin.ts
+'
+```
+
+### 12. 日常更新（无 Docker）
+
+```bash
+sudo -u kylink bash -lc '
+cd /opt/kylink
+git pull origin main
+npm ci
+npm run db:push
+npm run build
+'
+systemctl restart kylink
+systemctl status kylink --no-pager
+```
+
+查看日志：
+
+```bash
+journalctl -u kylink -f
 ```
 
 ---
 
-## 📝 详细部署步骤
+## （可选）Docker 部署
 
 ### 步骤 1：连接服务器
 
@@ -423,30 +499,21 @@ curl http://localhost/health
 
 ---
 
-## 🔒 SSL 证书配置
+## 🔒 SSL 证书配置（无 Docker / Nginx）
 
 ### 方式一：使用 Let's Encrypt（免费，推荐）
 
 ```bash
-# 1. 安装 Certbot
-apt-get update
-apt-get install certbot
+# 1. 安装 Certbot（Nginx 插件）
+apt update
+apt -y install certbot python3-certbot-nginx
 
-# 2. 停止 Nginx
-docker-compose stop nginx
+# 2. 申请证书并自动改写 Nginx 配置
+# 把域名替换成你的域名，例如：xc.kyads.net
+certbot --nginx -d your-domain.com
 
-# 3. 获取证书
-certbot certonly --standalone -d your-domain.com -d www.your-domain.com
-
-# 4. 复制证书到项目目录
-cp /etc/letsencrypt/live/your-domain.com/fullchain.pem nginx/ssl/
-cp /etc/letsencrypt/live/your-domain.com/privkey.pem nginx/ssl/
-
-# 5. 重启 Nginx
-docker-compose start nginx
-
-# 6. 设置自动续期
-echo "0 0 1 * * certbot renew --quiet && cp /etc/letsencrypt/live/your-domain.com/*.pem /path/to/kylink/nginx/ssl/ && docker-compose restart nginx" | crontab -
+# 3. 验证自动续期
+certbot renew --dry-run
 ```
 
 ### 方式二：使用阿里云 SSL 证书
@@ -455,98 +522,103 @@ echo "0 0 1 * * certbot renew --quiet && cp /etc/letsencrypt/live/your-domain.co
 2. 下载 Nginx 格式证书
 3. 上传到服务器：
    ```bash
-   scp fullchain.pem root@your-server-ip:/path/to/kylink/nginx/ssl/
-   scp privkey.pem root@your-server-ip:/path/to/kylink/nginx/ssl/
+   scp fullchain.pem root@your-server-ip:/etc/nginx/ssl/your-domain.com/
+   scp privkey.pem root@your-server-ip:/etc/nginx/ssl/your-domain.com/
    ```
-4. 重启 Nginx：
+4. 配置 Nginx 使用证书（示例片段）：
+   ```nginx
+   server {
+       listen 443 ssl http2;
+       server_name your-domain.com;
+
+       ssl_certificate     /etc/nginx/ssl/your-domain.com/fullchain.pem;
+       ssl_certificate_key /etc/nginx/ssl/your-domain.com/privkey.pem;
+
+       location / {
+           proxy_pass http://127.0.0.1:51001;
+           proxy_set_header Host $host;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       }
+   }
+   ```
+5. 重启 Nginx：
    ```bash
-   docker-compose restart nginx
+   nginx -t
+   systemctl reload nginx
    ```
 
 ---
 
-## 📊 监控和维护
+## 📊 监控和维护（无 Docker / systemd）
 
 ### 查看日志
 
 ```bash
-# 查看所有服务日志
-docker-compose logs -f
+# 查看服务实时日志
+journalctl -u kylink -f
 
-# 查看特定服务日志
-docker-compose logs -f app
-docker-compose logs -f mysql
-docker-compose logs -f nginx
-
-# 查看最近 100 行日志
-docker-compose logs --tail=100 app
+# 查看最近 200 行
+journalctl -u kylink -n 200 --no-pager
 ```
 
 ### 服务管理
 
 ```bash
 # 启动服务
-docker-compose up -d
+systemctl start kylink
 
 # 停止服务
-docker-compose down
+systemctl stop kylink
 
 # 重启服务
-docker-compose restart
-
-# 重启特定服务
-docker-compose restart app
+systemctl restart kylink
 
 # 查看服务状态
-docker-compose ps
+systemctl status kylink --no-pager
 
-# 查看资源使用
-docker stats
+# Nginx / MySQL
+systemctl status nginx --no-pager
+systemctl status mysql --no-pager
 ```
 
 ### 数据库管理
 
 ```bash
-# 进入 MySQL 容器
-docker exec -it kylink-mysql mysql -u root -p
+# 登录 MySQL
+mysql -u root -p
 
 # 备份数据库
-docker exec kylink-mysql mysqldump -u root -p${MYSQL_ROOT_PASSWORD} kyads_suffixpool > backup_$(date +%Y%m%d).sql
+mysqldump -u root -p kyads_suffixpool > backup_$(date +%Y%m%d).sql
 
 # 恢复数据库
-docker exec -i kylink-mysql mysql -u root -p${MYSQL_ROOT_PASSWORD} kyads_suffixpool < backup.sql
+mysql -u root -p kyads_suffixpool < backup.sql
 ```
 
 ### 更新应用
 
 ```bash
 # 1. 拉取最新代码
-git pull origin main
+sudo -u kylink bash -lc 'cd /opt/kylink && git pull origin main'
 
-# 2. 重新构建
-docker-compose build
+# 2. 安装依赖 + 数据库同步 + 构建
+sudo -u kylink bash -lc 'cd /opt/kylink && npm ci && npm run db:push && npm run build'
 
 # 3. 重启服务
-docker-compose up -d
+systemctl restart kylink
 
 # 4. 查看日志
-docker-compose logs -f app
+journalctl -u kylink -f
 ```
 
 ### 清理资源
 
 ```bash
-# 清理未使用的镜像
-docker image prune -a
+# 清理 systemd 日志（按需）
+journalctl --vacuum-time=14d
 
-# 清理未使用的容器
-docker container prune
-
-# 清理未使用的卷
-docker volume prune
-
-# 清理所有未使用的资源
-docker system prune -a
+# 清理 npm 缓存（按需）
+sudo -u kylink npm cache verify
 ```
 
 ---
@@ -555,20 +627,22 @@ docker system prune -a
 
 ### 问题 1：服务无法启动
 
-**症状：** `docker-compose up -d` 失败
+**症状：** `systemctl start kylink` 失败 / 服务反复重启
 
 **解决方案：**
 
 ```bash
 # 查看详细日志
-docker-compose logs
+journalctl -u kylink -n 200 --no-pager
+journalctl -u kylink -f
 
 # 检查端口占用
-netstat -tulpn | grep 51001
-netstat -tulpn | grep 3306
+ss -lntp | grep 51001 || true
+ss -lntp | grep 3306 || true
 
-# 检查配置文件
-docker-compose config
+# 检查服务配置
+systemctl cat kylink
+ls -l /etc/kylink/kylink.env
 ```
 
 ### 问题 2：数据库连接失败
@@ -579,16 +653,13 @@ docker-compose config
 
 ```bash
 # 检查 MySQL 状态
-docker-compose ps mysql
-
-# 查看 MySQL 日志
-docker-compose logs mysql
+systemctl status mysql --no-pager
 
 # 测试数据库连接
-docker exec kylink-mysql mysql -u root -p${MYSQL_ROOT_PASSWORD} -e "SELECT 1"
+mysql -u root -p -e "SELECT 1"
 
-# 检查环境变量
-docker exec kylink-app env | grep DATABASE_URL
+# 检查环境变量文件（注意别把密码发给别人）
+grep -n "DATABASE_URL" /etc/kylink/kylink.env
 ```
 
 ### 问题 3：Nginx 502 错误
@@ -599,19 +670,66 @@ docker exec kylink-app env | grep DATABASE_URL
 
 ```bash
 # 检查应用状态
-docker-compose ps app
+systemctl status kylink --no-pager
 
 # 查看应用日志
-docker-compose logs app
+journalctl -u kylink -n 200 --no-pager
 
 # 测试应用端口
 curl http://localhost:51001/api/health
 
 # 检查 Nginx 配置
-docker exec kylink-nginx nginx -t
+nginx -t
 
 # 重启 Nginx
-docker-compose restart nginx
+systemctl reload nginx
+```
+
+### 问题 3.1：应用端口被占用（EADDRINUSE: 51001）
+
+**症状：** `journalctl -u kylink` 里出现：
+
+- `Error: listen EADDRINUSE: address already in use :::51001`
+
+**原因：** 51001 已被其它进程监听（常见：你手动执行过 `npm run dev` / `npm run start`，或旧进程未退出）。
+
+**解决方案：**
+
+先停止 `kylink`，避免 systemd 无限重启刷日志：
+
+```bash
+systemctl stop kylink
+systemctl reset-failed kylink
+```
+
+找出占用 51001 的进程：
+
+```bash
+ss -lntp | grep ":51001" || true
+```
+
+如果你的系统没有 `ss` 输出进程名，可安装 `lsof`：
+
+```bash
+apt -y install lsof
+lsof -nP -iTCP:51001 -sTCP:LISTEN
+```
+
+杀掉占用端口的进程（把 PID 替换成你的实际值）：
+
+```bash
+kill PID
+sleep 1
+kill -9 PID || true
+```
+
+确认端口空闲后再启动：
+
+```bash
+ss -lntp | grep ":51001" || echo "51001 OK"
+systemctl start kylink
+systemctl status kylink --no-pager
+curl -fsS http://127.0.0.1:51001/api/health
 ```
 
 ### 问题 4：内存不足
@@ -623,16 +741,16 @@ docker-compose restart nginx
 ```bash
 # 查看内存使用
 free -h
-docker stats
 
-# 限制容器内存
-# 编辑 docker-compose.yml，添加：
-# services:
-#   app:
-#     mem_limit: 2g
+# 查看进程资源占用
+ps aux --sort=-%mem | head -n 15
 
-# 重启服务
-docker-compose up -d
+# 可选：增加 swap（示例：2G）
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+swapon --show
 ```
 
 ### 问题 5：磁盘空间不足
@@ -645,11 +763,11 @@ docker-compose up -d
 # 查看磁盘使用
 df -h
 
-# 清理 Docker 资源
-docker system prune -a --volumes
+# 清理系统日志
+journalctl --vacuum-time=14d
 
-# 清理日志
-truncate -s 0 /var/lib/docker/containers/*/*-json.log
+# 查看大文件/目录（按需）
+du -h /var/log | sort -h | tail -n 20
 ```
 
 ### 问题 6：Prisma 引擎与系统不兼容（登录/接口报错）
@@ -705,4 +823,4 @@ truncate -s 0 /var/lib/docker/containers/*/*-json.log
 
 ---
 
-**最后更新：** 2026-01-31
+**最后更新：** 2026-02-03

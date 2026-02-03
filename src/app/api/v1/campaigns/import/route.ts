@@ -7,11 +7,13 @@
  * - 支持多个 Spreadsheet URL
  * - 增量更新（upsert）
  * - 失败不中断，记录错误继续处理
+ * - 使用会话认证，数据导入到当前登录用户名下
  */
 
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
 import { errorResponse, successResponse } from '@/lib/utils'
+import { getSessionUser } from '@/lib/session-auth'
 import {
   convertGeoToCountryCode,
   extractRootDomain,
@@ -24,7 +26,6 @@ import {
 
 interface ImportRequest {
   spreadsheetUrls: string[]
-  userId?: string // 可选，不传则使用第一个活跃用户
 }
 
 interface SheetImportResult {
@@ -52,9 +53,16 @@ interface ImportResponse {
 
 export async function POST(request: NextRequest) {
   try {
+    // 获取当前会话用户（使用会话认证确保多租户隔离）
+    const authResult = await getSessionUser()
+    if (!authResult.success) {
+      return errorResponse(authResult.error.code, authResult.error.message, authResult.error.status)
+    }
+    const userId = authResult.user.id
+
     // 解析请求体
     const body = await request.json() as ImportRequest
-    const { spreadsheetUrls, userId: requestUserId } = body
+    const { spreadsheetUrls } = body
 
     // 验证参数
     if (!spreadsheetUrls || !Array.isArray(spreadsheetUrls) || spreadsheetUrls.length === 0) {
@@ -69,43 +77,6 @@ export async function POST(request: NextRequest) {
     if (validUrls.length === 0) {
       return errorResponse('INVALID_PARAMS', '请提供有效的 Spreadsheet URL', 400)
     }
-
-    // 获取用户 ID
-    let userId: string = requestUserId || ''
-
-    if (!userId) {
-      // 未指定用户时，获取第一个活跃用户
-      const defaultUser = await prisma.user.findFirst({
-        where: {
-          status: 'active',
-          deletedAt: null,
-        },
-        orderBy: {
-          createdAt: 'asc',
-        },
-        select: {
-          id: true,
-        },
-      })
-
-      if (!defaultUser) {
-        return errorResponse('NO_USER', '系统中没有可用用户，请先创建用户', 400)
-      }
-
-      userId = defaultUser.id
-    }
-
-    // 验证用户是否存在
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, status: true, deletedAt: true },
-    })
-
-    if (!user || user.deletedAt || user.status !== 'active') {
-      return errorResponse('USER_NOT_FOUND', '指定用户不存在或已禁用', 400)
-    }
-
-    // 此时 userId 一定是有效的 string
 
     // 导入前先软删除该用户的所有广告系列（保证数据与表格完全同步）
     const deleteResult = await prisma.campaignMeta.updateMany({

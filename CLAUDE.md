@@ -173,3 +173,7 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：添加 postinstall 脚本自动生成 Prisma 客户端。
 2026-02-03：修正 Prisma binaryTargets 为 debian-openssl-3.0.x。
 2026-02-03：添加 linux-musl binaryTargets 支持 Docker Alpine 环境。
+2026-02-03：重写 DEPLOYMENT.md 为无 Docker 小白部署流程，适配 xc.kyads.net，并补齐 Nginx+systemd+HTTPS 运维排障说明。
+2026-02-03：补充 systemd 启动失败时 EADDRINUSE(51001) 端口占用的定位与处理步骤。
+2026-02-03：修正文档中环境变量文件权限与 create-admin 脚本执行方式，避免 sudo 运行时丢失 DATABASE_URL。
+2026-02-03：修复 campaigns/import 接口多租户隔离问题，添加会话认证确保数据导入到当前登录用户名下。

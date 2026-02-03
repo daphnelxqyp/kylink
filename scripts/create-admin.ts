@@ -47,7 +47,7 @@ function getArgValue(flag: string): string | undefined {
 }
 
 async function main() {
-  const email = getArgValue('--email') || 'admin@kyads.com'
+  const email = getArgValue('--email') || 'admin1@kyads.net'
   const password = getArgValue('--password') || 'Admin123'
   const name = getArgValue('--name') || '管理员'
   const forceReset = process.argv.includes('--reset')
