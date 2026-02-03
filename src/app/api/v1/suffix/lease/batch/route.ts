@@ -366,7 +366,7 @@ export async function POST(request: NextRequest) {
 
   // 7. 并行处理所有 campaign
   const results: CampaignLeaseResult[] = await Promise.all(
-    data.campaigns.map(campaign => processSingleLease(userId, campaign))
+    data.campaigns.map((campaign: CampaignLeaseRequest) => processSingleLease(userId, campaign))
   )
 
   // 8. 返回结果

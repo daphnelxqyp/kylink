@@ -402,7 +402,7 @@ export async function POST(req: NextRequest) {
     // ========================================
 
     // 映射 redirectSteps 到前端需要的 redirectChain 格式
-    const redirectChain: RedirectStep[] = trackResult.redirectSteps.map(step => ({
+    const redirectChain: RedirectStep[] = trackResult.redirectSteps.map((step: RedirectStep) => ({
       step: step.step,
       url: step.url,
       domain: step.domain || extractDomain(step.url),

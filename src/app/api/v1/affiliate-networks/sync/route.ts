@@ -561,7 +561,8 @@ async function fetchMerchantPage(
   if (totalPage === 0) totalPage = 1
 
   // 规范化商家数据
-  const merchants = rawList.map(raw => normalizeMerchant(raw, config.type))
+  type RawMerchant = (typeof rawList)[number]
+  const merchants = rawList.map((raw: RawMerchant) => normalizeMerchant(raw, config.type))
 
   const firstRaw = (rawList[0] || null) as unknown as Record<string, unknown> | null
   const responsePreview: Record<string, unknown> = {
@@ -844,7 +845,7 @@ async function* syncAffiliateData(
       
       // 带重试的请求
       const results = await Promise.all(
-        batch.map(page => fetchMerchantPageWithRetry(apiConfig, affiliateApiKey, page, PAGE_SIZE))
+        batch.map((page: number) => fetchMerchantPageWithRetry(apiConfig, affiliateApiKey, page, PAGE_SIZE))
       )
 
       results.forEach(r => {

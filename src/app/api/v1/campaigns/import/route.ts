@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
 
     // 过滤空 URL
     const validUrls = spreadsheetUrls
-      .map(url => url?.trim())
-      .filter(Boolean)
+      .map((url: string | null | undefined) => url?.trim())
+      .filter((url): url is string => Boolean(url))
 
     if (validUrls.length === 0) {
       return errorResponse('INVALID_PARAMS', '请提供有效的 Spreadsheet URL', 400)

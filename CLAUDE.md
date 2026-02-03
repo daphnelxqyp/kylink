@@ -158,3 +158,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-02：补充 Debian 13.3 无 Docker 部署的逐步教程。
 2026-02-02：明确无 Docker 部署克隆目录为 /root/kylink。
 2026-02-02：将 Prisma binaryTargets 调整为 linux-openssl-3.0.x 适配 Debian。
+2026-02-03：一次性补齐 API 路由隐式 any 的类型标注并通过类型检查。

@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // 6. 获取现有的 campaign 数据
-    const campaignIds = campaigns.map(c => c.campaignId)
+    const campaignIds = campaigns.map((c: CampaignData) => c.campaignId)
     const existingCampaigns = await prisma.campaignMeta.findMany({
       where: {
         userId,
@@ -103,7 +103,8 @@ export async function POST(request: NextRequest) {
     })
 
     // 建立查找映射
-    const existingMap = new Map(existingCampaigns.map(c => [c.campaignId, c]))
+    type ExistingCampaign = typeof existingCampaigns[number]
+    const existingMap = new Map(existingCampaigns.map((c: ExistingCampaign) => [c.campaignId, c]))
 
     // 7. 处理每个 campaign
     for (const campaign of campaigns) {
@@ -190,7 +191,7 @@ export async function POST(request: NextRequest) {
 
     // 8. 全量同步模式：标记未上报的 campaign 为 inactive
     if (syncMode === 'full') {
-      const reportedIds = campaigns.map(c => c.campaignId)
+      const reportedIds = campaigns.map((c: CampaignData) => c.campaignId)
       await prisma.campaignMeta.updateMany({
         where: {
           userId,

@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, context: { params: { id: string
   // 优先使用 userIds 数组，如果没有则使用单个 userId（向后兼容）
   let userIds: string[] = []
   if (data?.userIds && Array.isArray(data.userIds)) {
-    userIds = data.userIds.map(id => id.trim()).filter(Boolean)
+    userIds = data.userIds.map((id: string) => id.trim()).filter(Boolean)
   } else if (data?.userId?.trim()) {
     userIds = [data.userId.trim()]
   }
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, context: { params: { id: string
       // 2. 创建新的分配关系
       if (userIds.length > 0) {
         await tx.proxyProviderUser.createMany({
-          data: userIds.map(userId => ({
+          data: userIds.map((userId: string) => ({
             proxyProviderId: providerId,
             userId,
           })),

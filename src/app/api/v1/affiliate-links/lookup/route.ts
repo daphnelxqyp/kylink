@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 批量查询该联盟下的 mid
-        const mids = items.map(i => i.mid)
+        const mids = items.map((i: { mid: string }) => i.mid)
         const merchants = await prisma.affiliateMerchant.findMany({
           where: {
             userId,
@@ -373,7 +373,7 @@ export async function POST(req: NextRequest) {
   let domainResults: Record<string, TrackingUrlResult> | undefined
   if (domains && domains.length > 0) {
     domainResults = {}
-    const normalizedDomains = domains.map(d => d.replace(/^www\./, '').toLowerCase())
+    const normalizedDomains = domains.map((d: string) => d.replace(/^www\./, '').toLowerCase())
 
     const merchants = await prisma.affiliateMerchant.findMany({
       where: {

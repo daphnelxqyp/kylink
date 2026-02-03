@@ -45,6 +45,8 @@ function mapAdminUser(user: {
   }
 }
 
+type AdminUserRow = Parameters<typeof mapAdminUser>[0]
+
 export async function GET(_request: NextRequest) {
   try {
     const users = await prisma.user.findMany({
@@ -64,7 +66,7 @@ export async function GET(_request: NextRequest) {
       },
     })
 
-    const normalizedUsers = users.map(user => mapAdminUser(user))
+    const normalizedUsers = users.map((user: AdminUserRow) => mapAdminUser(user))
     return successResponse({ users: normalizedUsers, total: users.length })
   } catch (error) {
     console.error('Admin users list error:', error)

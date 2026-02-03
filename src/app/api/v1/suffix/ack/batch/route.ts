@@ -209,7 +209,7 @@ export async function POST(request: NextRequest) {
 
   // 6. 并行处理所有 ack
   const results: SingleAckResult[] = await Promise.all(
-    data.acks.map(ack => processSingleAck(userId, ack))
+    data.acks.map((ack: SingleAckRequest) => processSingleAck(userId, ack))
   )
 
   // 7. 返回结果
