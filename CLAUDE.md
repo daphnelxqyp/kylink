@@ -170,3 +170,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：修复 groupBy _count 类型在不同环境下的兼容性问题。
 2026-02-03：为 getAlertStats 中的 groupBy 统计添加显式类型注解。
 2026-02-03：全盘修复所有文件中 groupBy _count 的类型兼容性问题。
+2026-02-03：添加 postinstall 脚本自动生成 Prisma 客户端。
