@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 获取用户 ID
-    let userId = requestUserId
+    let userId: string = requestUserId || ''
 
     if (!userId) {
       // 未指定用户时，获取第一个活跃用户
@@ -104,6 +104,8 @@ export async function POST(request: NextRequest) {
     if (!user || user.deletedAt || user.status !== 'active') {
       return errorResponse('USER_NOT_FOUND', '指定用户不存在或已禁用', 400)
     }
+
+    // 此时 userId 一定是有效的 string
 
     // 导入前先软删除该用户的所有广告系列（保证数据与表格完全同步）
     const deleteResult = await prisma.campaignMeta.updateMany({
