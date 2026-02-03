@@ -787,15 +787,17 @@ export async function getStockStats(userId?: string): Promise<{
       })
     }
     const entry = campaignMap.get(key)!
+    // _count 可能是 number 或 { _all: number } 取决于 Prisma 版本
+    const count = typeof stat._count === 'number' ? stat._count : (stat._count as { _all: number })._all
     switch (stat.status) {
       case 'available':
-        entry.available = stat._count
+        entry.available = count
         break
       case 'leased':
-        entry.leased = stat._count
+        entry.leased = count
         break
       case 'consumed':
-        entry.consumed = stat._count
+        entry.consumed = count
         break
     }
   }

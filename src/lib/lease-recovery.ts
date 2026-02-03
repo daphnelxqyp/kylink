@@ -220,7 +220,12 @@ export async function getLeaseHealth(): Promise<{
     _count: true,
   })
 
-  const statusMap = new Map(stats.map(s => [s.status, s._count]))
+  // _count 可能是 number 或 { _all: number } 取决于 Prisma 版本
+  const statusMap = new Map<string, number>()
+  for (const s of stats) {
+    const count = typeof s._count === 'number' ? s._count : (s._count as { _all: number })._all
+    statusMap.set(s.status, count)
+  }
 
   // 查找最旧的活跃租约
   const oldestActive = await prisma.suffixLease.findFirst({
