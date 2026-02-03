@@ -9,6 +9,8 @@ import prisma from '@/lib/prisma'
 import { errorResponse, successResponse } from '@/lib/utils'
 import { getSessionUser, getUserIdFilter } from '@/lib/session-auth'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: NextRequest) {
   try {
     // 获取当前会话用户

@@ -6,8 +6,29 @@
 import { NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
+/**
+ * 判断数据库连接是否已配置
+ */
+function isDatabaseConfigured(): boolean {
+  return Boolean(process.env.DATABASE_URL)
+}
+
 export async function GET() {
   try {
+    if (!isDatabaseConfigured()) {
+      return NextResponse.json(
+        {
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          database: 'not_configured',
+          error: 'DATABASE_URL 未配置',
+        },
+        { status: 503 }
+      )
+    }
+
     // 检查数据库连接
     await prisma.$queryRaw`SELECT 1`
 
