@@ -6,8 +6,10 @@
 
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
 import { errorResponse, parseJsonBody, successResponse } from '@/lib/utils'
+
+/** Prisma 事务客户端类型 */
+type TransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
 interface AdminAssignProxyProviderRequest {
   // 支持单个用户 ID（向后兼容）或多个用户 ID 数组
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest, context: { params: { id: string
     }
 
     // 使用事务更新分配关系
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await prisma.$transaction(async (tx: TransactionClient) => {
       // 1. 删除该代理商的所有现有分配
       await tx.proxyProviderUser.deleteMany({
         where: { proxyProviderId: providerId },
