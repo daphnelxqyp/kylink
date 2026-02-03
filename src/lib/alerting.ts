@@ -347,10 +347,15 @@ async function checkFailureRate(config: AlertConfig): Promise<Alert[]> {
       _count: true,
     })
 
-    const statusMap = new Map(recentLeases.map((s: { status: string; _count: number }) => [s.status, s._count]))
-    const consumed = statusMap.get('consumed') || 0
-    const failed = statusMap.get('failed') || 0
-    const total = consumed + failed
+    const statusMap = new Map<string, number>()
+    for (const s of recentLeases) {
+      // _count 可能是 number 或 { _all: number } 取决于 Prisma 版本
+      const count = typeof s._count === 'number' ? s._count : (s._count as { _all: number })._all
+      statusMap.set(s.status, count)
+    }
+    const consumed: number = statusMap.get('consumed') || 0
+    const failed: number = statusMap.get('failed') || 0
+    const total: number = consumed + failed
 
     if (total > 0) {
       const failureRate = (failed / total) * 100
