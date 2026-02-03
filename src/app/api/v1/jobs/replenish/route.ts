@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
 
       case 'all': {
         // 批量补货所有低水位 campaign（支持强制模式）
-        const result = await replenishAllLowStock(force)
+        const result = await replenishAllLowStock(force, undefined, userId)
         return successResponse({
           mode: 'all',
           ...result,

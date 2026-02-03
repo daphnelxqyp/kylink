@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         await replenishAllLowStock(force, (progress: ReplenishProgress) => {
           const data = formatSSE(progress)
           controller.enqueue(encoder.encode(data))
-        })
+        }, userId)
       } catch (error) {
         console.error('[replenish-stream] 错误:', error)
         const errorProgress: ReplenishProgress = {

@@ -15,9 +15,10 @@
  * - CAMPAIGN_CONCURRENCY: 批量补货时 Campaign 并发数（默认 3）
  */
 
+import { Prisma } from '@prisma/client'
 import prisma from './prisma'
 import { STOCK_CONFIG, DYNAMIC_WATERMARK_CONFIG } from './utils'
-import { generateSuffix, isProxyServiceAvailable } from './suffix-generator'
+import { generateSuffix, isProxyServiceAvailable, type SuffixGenerateResult } from './suffix-generator'
 
 // ============================================
 // 环境变量配置
@@ -44,6 +45,16 @@ const STOCK_CONCURRENCY = parseInt(process.env.STOCK_CONCURRENCY || '5', 10)
  * 建议值：2vCPU/2G=2, 2vCPU/4G=3, 4vCPU/8G=5
  */
 const CAMPAIGN_CONCURRENCY = parseInt(process.env.CAMPAIGN_CONCURRENCY || '3', 10)
+
+/**
+ * 单个 suffix 生成的最大重试次数（包含首次尝试）
+ */
+const SUFFIX_RETRY_ATTEMPTS = parseInt(process.env.SUFFIX_RETRY_ATTEMPTS || '2', 10)
+
+/**
+ * suffix 生成失败后的重试延迟（毫秒）
+ */
+const SUFFIX_RETRY_DELAY_MS = parseInt(process.env.SUFFIX_RETRY_DELAY_MS || '1200', 10)
 
 // ============================================
 // 并发控制工具
@@ -88,6 +99,58 @@ function createConcurrencyLimiter(concurrency: number) {
   }
 }
 
+/**
+ * 休眠指定时长
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * 判断错误是否适合重试
+ */
+function shouldRetrySuffix(error?: string): boolean {
+  if (!error) return false
+  const nonRetryablePrefixes = [
+    'INVALID_URL',
+    'NO_PROXY_AVAILABLE',
+    'NO_AFFILIATE_LINK',
+  ]
+  return !nonRetryablePrefixes.some(prefix => error.startsWith(prefix))
+}
+
+/**
+ * 生成 suffix（带有限重试）
+ */
+async function generateSuffixWithRetry(params: {
+  userId: string
+  campaignId: string
+  affiliateLinkId: string
+  affiliateUrl: string
+  country: string
+  targetDomain?: string
+}): Promise<{ result: SuffixGenerateResult; attempts: number }> {
+  let attempts = 0
+  let lastResult: SuffixGenerateResult = { success: false, error: 'UNKNOWN_ERROR' }
+
+  while (attempts < SUFFIX_RETRY_ATTEMPTS) {
+    attempts += 1
+    lastResult = await generateSuffix(params)
+
+    if (lastResult.success) {
+      return { result: lastResult, attempts }
+    }
+
+    if (!shouldRetrySuffix(lastResult.error) || attempts >= SUFFIX_RETRY_ATTEMPTS) {
+      break
+    }
+
+    await sleep(SUFFIX_RETRY_DELAY_MS)
+  }
+
+  return { result: lastResult, attempts }
+}
+
 // 补货结果类型
 export interface ReplenishResult {
   campaignId: string
@@ -98,6 +161,17 @@ export interface ReplenishResult {
   status: 'success' | 'skipped' | 'error'
   message?: string
 }
+
+type GeneratedStockItem = {
+  userId: string
+  campaignId: string
+  finalUrlSuffix: string
+  status: 'available'
+  exitIp: string
+  sourceAffiliateLinkId: string | null
+}
+
+type GenerateOutcome = { item: GeneratedStockItem } | { error: string }
 
 // 批量补货结果
 export interface BatchReplenishResult {
@@ -336,7 +410,7 @@ export async function replenishCampaign(
 
         if (useRealGenerator && affiliateLink) {
           // 使用真实代理生成 suffix（传入目标域名，到达目标域名就早停）
-          const result = await generateSuffix({
+          const { result, attempts } = await generateSuffixWithRetry({
             userId,
             campaignId,
             affiliateLinkId: affiliateLink.id,
@@ -352,8 +426,8 @@ export async function replenishCampaign(
             // 生成失败
             if (!ALLOW_MOCK_SUFFIX) {
               // 生产环境不允许模拟数据，跳过此条
-              console.warn(`[Stock] Skipped suffix generation for ${campaignId}: ${result.error || 'generation failed'}`)
-              return null  // 返回 null 表示跳过
+              console.warn(`[Stock] Skipped suffix generation for ${campaignId}: ${result.error || 'generation failed'} (attempts=${attempts})`)
+              return { error: result.error || 'GENERATION_FAILED: suffix generation failed' }
             }
 
             // 开发环境允许使用模拟数据
@@ -366,8 +440,12 @@ export async function replenishCampaign(
           // 无联盟链接或无代理
           if (!ALLOW_MOCK_SUFFIX) {
             // 生产环境不允许模拟数据，跳过此条
-            console.warn(`[Stock] Skipped suffix generation for ${campaignId}: no proxy available`)
-            return null  // 返回 null 表示跳过
+            console.warn(`[Stock] Skipped suffix generation for ${campaignId}: no proxy or affiliate link`)
+            return {
+              error: affiliateLink
+                ? 'NO_PROXY_AVAILABLE: 无可用代理'
+                : 'NO_AFFILIATE_LINK: 未配置联盟链接',
+            }
           }
 
           // 开发环境允许使用模拟数据
@@ -377,24 +455,32 @@ export async function replenishCampaign(
         }
         
         return {
-          userId,
-          campaignId,
-          finalUrlSuffix,
-          status: 'available' as const,
-          exitIp,
-          sourceAffiliateLinkId: affiliateLink?.id || null,
+          item: {
+            userId,
+            campaignId,
+            finalUrlSuffix,
+            status: 'available' as const,
+            exitIp,
+            sourceAffiliateLinkId: affiliateLink?.id || null,
+          },
         }
       })
     })
 
     // 等待所有任务完成，过滤掉跳过的项（null）
     const results = await Promise.all(generateTasks)
-    const stockItems = results.filter((item): item is NonNullable<typeof item> => item !== null)
+    const stockItems = results
+      .filter((item): item is GenerateOutcome & { item: GeneratedStockItem } => 'item' in item)
+      .map(item => item.item)
 
     const elapsed = Date.now() - startTime
     const skippedCount = results.length - stockItems.length
+    const errorMessages = results
+      .filter((item): item is GenerateOutcome & { error: string } => 'error' in item)
+      .map(item => item.error)
+    const uniqueErrors = Array.from(new Set(errorMessages)).slice(0, 3)
     if (skippedCount > 0) {
-      console.log(`[Stock] Skipped ${skippedCount} items due to proxy unavailability (production mode)`)
+      console.log(`[Stock] Skipped ${skippedCount} items due to generation failures or proxy issues (production mode)`)
     }
     console.log(`[Stock] Generated ${stockItems.length} items in ${elapsed}ms (${stockItems.length > 0 ? (elapsed / stockItems.length).toFixed(0) : 0}ms/item avg)`)
 
@@ -407,7 +493,9 @@ export async function replenishCampaign(
         producedCount: 0,
         currentCount: availableCount,
         status: 'error',
-        message: '无法生成库存：无可用代理且不允许使用模拟数据',
+        message: uniqueErrors.length > 0
+          ? `无法生成库存：${uniqueErrors.join('；')}`
+          : '无法生成库存：无可用代理且不允许使用模拟数据',
       }
     }
 
@@ -462,16 +550,21 @@ export async function replenishCampaign(
  * 1. 状态已启用（status: active）
  * 2. 国家不为空（country 有值）
  * 3. 有联盟链接配置（AffiliateLink 存在且启用）
+ * 4. 可选按用户过滤（userId）
  *
  * 优化：使用单次 SQL 查询（EXISTS 子查询）替代两次查询 + 内存过滤
+ *
+ * @param userId 可选用户 ID，仅返回该用户的 Campaign
  */
-export async function getEligibleCampaigns(): Promise<Array<{
+export async function getEligibleCampaigns(userId?: string | null): Promise<Array<{
   userId: string
   campaignId: string
   campaignName: string | null
   country: string | null
   hasAffiliateLink: boolean
 }>> {
+  const userFilter = userId ? Prisma.sql`AND cm.userId = ${userId}` : Prisma.sql``
+
   // 使用单次 SQL 查询，通过 EXISTS 子查询过滤有联盟链接的 campaign
   const campaigns = await prisma.$queryRaw<Array<{
     userId: string
@@ -489,6 +582,7 @@ export async function getEligibleCampaigns(): Promise<Array<{
       AND cm.deletedAt IS NULL
       AND cm.country IS NOT NULL
       AND cm.country != ''
+      ${userFilter}
       AND EXISTS (
         SELECT 1 FROM AffiliateLink al
         WHERE al.userId = cm.userId
@@ -517,10 +611,12 @@ export async function getEligibleCampaigns(): Promise<Array<{
  * 
  * @param force 是否强制补货（忽略水位检查）
  * @param onProgress 可选的进度回调函数（用于 SSE 流）
+ * @param userId 可选用户 ID，仅补货该用户的 Campaign
  */
 export async function replenishAllLowStock(
   force: boolean = false,
-  onProgress?: (progress: ReplenishProgress) => void
+  onProgress?: (progress: ReplenishProgress) => void,
+  userId?: string | null
 ): Promise<BatchReplenishResult> {
   let replenished = 0
   let skipped = 0
@@ -536,7 +632,7 @@ export async function replenishAllLowStock(
       message: '正在获取 Campaign 列表...',
     })
 
-    const eligibleCampaigns = await getEligibleCampaigns()
+    const eligibleCampaigns = await getEligibleCampaigns(userId)
     const totalCampaigns = eligibleCampaigns.length
     
     console.log(`[Stock] 找到 ${totalCampaigns} 个符合条件的 Campaign（状态启用 + 国家不为空 + 联盟链接不为空）${force ? '（强制补货模式）' : ''}`)
@@ -607,8 +703,8 @@ export async function replenishAllLowStock(
         const statusText = result.status === 'success' 
           ? `+${result.producedCount} 条` 
           : result.status === 'skipped' 
-            ? '已跳过' 
-            : '失败'
+            ? (result.message || '已跳过')
+            : (result.message || '失败')
         
         onProgress?.({
           stage: 'processing',
