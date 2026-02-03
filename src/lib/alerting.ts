@@ -19,7 +19,6 @@
  */
 
 import prisma from './prisma'
-import { Prisma } from '@prisma/client'
 import { getStockStats } from './stock-producer'
 import { getLeaseHealth } from './lease-recovery'
 import { STOCK_CONFIG } from './utils'
@@ -55,7 +54,7 @@ interface PrismaAlertRecord {
   level: AlertLevel
   title: string
   message: string
-  metadata: Prisma.JsonValue
+  metadata: unknown
   createdAt: Date
   acknowledged: boolean
   acknowledgedAt: Date | null
@@ -135,7 +134,7 @@ async function createAlert(
         level,
         title,
         message,
-        metadata: metadata !== undefined ? (metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
+        metadata: (metadata ?? null) as Parameters<typeof prisma.alert.create>[0]['data']['metadata'],
         acknowledged: false,
       },
     })
