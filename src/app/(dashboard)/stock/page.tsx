@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Button, Card, Checkbox, Col, Row, Space, Statistic, Table, Tag, Typography, message, Progress, Alert } from 'antd'
 import { DatabaseOutlined, SyncOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
-import { getJson, postJson } from '@/lib/api-client'
+import { getJson, postJson, getStoredApiKey } from '@/lib/api-client'
 import type { StockCampaignStat, StockStatsResponse } from '@/types/dashboard'
 import NoApiKeyAlert from '@/components/no-api-key-alert'
 
@@ -61,10 +61,17 @@ export default function StockPage() {
     abortControllerRef.current = abortController
 
     try {
+      // 获取 API Key 用于认证
+      const apiKey = getStoredApiKey()
+      if (!apiKey) {
+        throw new Error('请先在设置页配置 API Key')
+      }
+
       const response = await fetch('/api/v1/jobs/replenish/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ force: forceReplenish }),
         signal: abortController.signal,
