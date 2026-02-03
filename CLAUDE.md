@@ -177,3 +177,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：补充 systemd 启动失败时 EADDRINUSE(51001) 端口占用的定位与处理步骤。
 2026-02-03：修正文档中环境变量文件权限与 create-admin 脚本执行方式，避免 sudo 运行时丢失 DATABASE_URL。
 2026-02-03：修复 campaigns/import 接口多租户隔离问题，添加会话认证确保数据导入到当前登录用户名下。
+2026-02-03：修复普通用户无法访问库存管理页面的权限问题，将 /api/v1/jobs/replenish 和 /api/v1/jobs/alerts 开放给 USER 角色。
