@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 过滤空 URL
-    const validUrls = spreadsheetUrls
+    const validUrls: string[] = spreadsheetUrls
       .map((url: string | null | undefined) => url?.trim())
       .filter((url): url is string => Boolean(url))
 
