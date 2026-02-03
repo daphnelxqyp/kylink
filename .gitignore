@@ -76,3 +76,6 @@ nginx/ssl/*.crt
 
 # Deployment
 .env.production
+
+# Google Ads Scripts (contain API keys)
+campaignto1.js
