@@ -19,6 +19,7 @@
  */
 
 import prisma from './prisma'
+import { Prisma } from '@prisma/client'
 import { getStockStats } from './stock-producer'
 import { getLeaseHealth } from './lease-recovery'
 import { STOCK_CONFIG } from './utils'
@@ -54,7 +55,7 @@ interface PrismaAlertRecord {
   level: AlertLevel
   title: string
   message: string
-  metadata: Record<string, unknown> | null
+  metadata: Prisma.JsonValue
   createdAt: Date
   acknowledged: boolean
   acknowledgedAt: Date | null
@@ -134,7 +135,7 @@ async function createAlert(
         level,
         title,
         message,
-        metadata: metadata ?? null,
+        metadata: metadata !== undefined ? (metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
         acknowledged: false,
       },
     })
@@ -347,7 +348,7 @@ async function checkFailureRate(config: AlertConfig): Promise<Alert[]> {
       _count: true,
     })
 
-    const statusMap = new Map(recentLeases.map(s => [s.status, s._count]))
+    const statusMap = new Map(recentLeases.map((s: { status: string; _count: number }) => [s.status, s._count]))
     const consumed = statusMap.get('consumed') || 0
     const failed = statusMap.get('failed') || 0
     const total = consumed + failed
