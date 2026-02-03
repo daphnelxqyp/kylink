@@ -46,6 +46,20 @@ export interface Alert {
   acknowledgedAt?: Date | null
 }
 
+/** Prisma Alert 记录（与数据库字段一致） */
+interface PrismaAlertRecord {
+  id: string
+  userId: string | null
+  type: AlertType
+  level: AlertLevel
+  title: string
+  message: string
+  metadata: Record<string, unknown> | null
+  createdAt: Date
+  acknowledged: boolean
+  acknowledgedAt: Date | null
+}
+
 /** 告警配置 */
 export interface AlertConfig {
   // 低库存告警阈值
@@ -165,7 +179,7 @@ async function createAlert(
 /**
  * 将 Prisma Alert 转换为接口类型
  */
-function convertPrismaAlert(dbAlert: PrismaAlert): Alert {
+function convertPrismaAlert(dbAlert: PrismaAlertRecord): Alert {
   return {
     id: dbAlert.id,
     userId: dbAlert.userId,
