@@ -19,7 +19,6 @@
  */
 
 import prisma from './prisma'
-import { Prisma } from '@prisma/client'
 import { getStockStats } from './stock-producer'
 import { getLeaseHealth } from './lease-recovery'
 import { STOCK_CONFIG } from './utils'
@@ -120,7 +119,7 @@ async function createAlert(
         level,
         title,
         message,
-        metadata: metadata as Prisma.InputJsonValue ?? Prisma.JsonNull,
+        metadata: metadata ?? null,
         acknowledged: false,
       },
     })
