@@ -141,7 +141,7 @@ async function createAlert(
           ...(metadata || {}),
         },
       },
-    }).catch(err => console.error('[Alert] Failed to log alert:', err))
+    }).catch((err: unknown) => console.error('[Alert] Failed to log alert:', err))
 
     return convertPrismaAlert(dbAlert)
   } catch (error) {
@@ -515,7 +515,7 @@ export async function acknowledgeAlert(alertId: string): Promise<boolean> {
         resourceType: 'Alert',
         resourceId: alertId,
       },
-    }).catch(err => console.error('[Alert] Failed to log acknowledge:', err))
+    }).catch((err: unknown) => console.error('[Alert] Failed to log acknowledge:', err))
 
     return true
   } catch (error) {
