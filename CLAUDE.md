@@ -166,3 +166,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：补齐 alerting.ts 中 catch 回调的显式类型标注。
 2026-02-03：为告警转换函数补充本地 PrismaAlert 记录类型。
 2026-02-03：修复 alerting.ts 中 Prisma JSON 类型兼容性问题以通过构建。
+2026-02-03：移除 Prisma 命名空间导入以兼容服务器环境。
