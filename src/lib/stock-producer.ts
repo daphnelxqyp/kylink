@@ -171,7 +171,9 @@ type GeneratedStockItem = {
   sourceAffiliateLinkId: string | null
 }
 
-type GenerateOutcome = { item: GeneratedStockItem } | { error: string }
+type GenerateOutcome =
+  | { kind: 'item'; item: GeneratedStockItem }
+  | { kind: 'error'; error: string }
 
 // 批量补货结果
 export interface BatchReplenishResult {
@@ -427,7 +429,10 @@ export async function replenishCampaign(
             if (!ALLOW_MOCK_SUFFIX) {
               // 生产环境不允许模拟数据，跳过此条
               console.warn(`[Stock] Skipped suffix generation for ${campaignId}: ${result.error || 'generation failed'} (attempts=${attempts})`)
-              return { error: result.error || 'GENERATION_FAILED: suffix generation failed' }
+              return {
+                kind: 'error',
+                error: result.error || 'GENERATION_FAILED: suffix generation failed',
+              }
             }
 
             // 开发环境允许使用模拟数据
@@ -442,6 +447,7 @@ export async function replenishCampaign(
             // 生产环境不允许模拟数据，跳过此条
             console.warn(`[Stock] Skipped suffix generation for ${campaignId}: no proxy or affiliate link`)
             return {
+              kind: 'error',
               error: affiliateLink
                 ? 'NO_PROXY_AVAILABLE: 无可用代理'
                 : 'NO_AFFILIATE_LINK: 未配置联盟链接',
@@ -455,6 +461,7 @@ export async function replenishCampaign(
         }
         
         return {
+          kind: 'item',
           item: {
             userId,
             campaignId,
@@ -470,13 +477,13 @@ export async function replenishCampaign(
     // 等待所有任务完成，过滤掉跳过的项（null）
     const results = await Promise.all(generateTasks)
     const stockItems = results
-      .filter((item): item is GenerateOutcome & { item: GeneratedStockItem } => 'item' in item)
+      .filter((item): item is Extract<GenerateOutcome, { kind: 'item' }> => item.kind === 'item')
       .map(item => item.item)
 
     const elapsed = Date.now() - startTime
     const skippedCount = results.length - stockItems.length
     const errorMessages = results
-      .filter((item): item is GenerateOutcome & { error: string } => 'error' in item)
+      .filter((item): item is Extract<GenerateOutcome, { kind: 'error' }> => item.kind === 'error')
       .map(item => item.error)
     const uniqueErrors = Array.from(new Set(errorMessages)).slice(0, 3)
     if (skippedCount > 0) {
