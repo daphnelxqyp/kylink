@@ -596,7 +596,9 @@ export async function getAlertStats(userId?: string): Promise<AlertStats> {
       critical: 0,
     }
     for (const stat of levelStats) {
-      byLevel[stat.level] = stat._count
+      const level = stat.level as AlertLevel
+      const count = typeof stat._count === 'number' ? stat._count : (stat._count as { _all: number })._all
+      byLevel[level] = count
     }
 
     // 3. 按类型分组统计
@@ -614,7 +616,9 @@ export async function getAlertStats(userId?: string): Promise<AlertStats> {
       system_health: 0,
     }
     for (const stat of typeStats) {
-      byType[stat.type] = stat._count
+      const alertType = stat.type as AlertType
+      const count = typeof stat._count === 'number' ? stat._count : (stat._count as { _all: number })._all
+      byType[alertType] = count
     }
 
     return {
