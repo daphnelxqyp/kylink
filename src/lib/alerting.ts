@@ -22,7 +22,8 @@ import prisma from './prisma'
 import { getStockStats } from './stock-producer'
 import { getLeaseHealth } from './lease-recovery'
 import { STOCK_CONFIG } from './utils'
-import type { AlertType, AlertLevel, Alert as PrismaAlert } from '@prisma/client'
+type AlertType = 'low_stock' | 'lease_timeout' | 'high_failure_rate' | 'no_stock_frequent' | 'system_health'
+type AlertLevel = 'info' | 'warning' | 'critical'
 
 // ============================================
 // 类型定义

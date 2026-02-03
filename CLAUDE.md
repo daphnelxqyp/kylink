@@ -162,3 +162,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：修复 campaigns/sync 与 import 接口的 TypeScript 类型推断问题。
 2026-02-03：补齐 campaigns/sync 现有映射的显式类型注解。
 2026-02-03：移除 alerting.ts 对 Prisma 命名空间依赖以通过构建。
+2026-02-03：改为本地 AlertType/AlertLevel 字面量类型避免 Prisma 类型导入。
