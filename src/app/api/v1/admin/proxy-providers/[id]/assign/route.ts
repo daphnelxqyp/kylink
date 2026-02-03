@@ -120,9 +120,11 @@ export async function POST(request: NextRequest, context: { params: { id: string
     })
 
     // 转换格式，将 assignedUsers 转为更简洁的结构
+    type UpdatedType = NonNullable<typeof updated>
+    type AssignedUserItem = UpdatedType['assignedUsers'][number]
     const result = {
       ...updated,
-      assignedUsers: updated?.assignedUsers?.map(au => au.user) || [],
+      assignedUsers: updated?.assignedUsers?.map((au: AssignedUserItem) => au.user) || [],
     }
 
     return successResponse({ provider: result })
