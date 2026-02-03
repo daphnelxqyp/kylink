@@ -184,3 +184,5 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：为补货生成增加有限重试并输出具体失败原因以降低失败率。
 2026-02-03：标记健康检查与管理端 campaigns 接口为动态并在未配置数据库时返回健康失败。
 2026-02-03：修复补货结果过滤的类型谓词以通过构建检查。
+2026-02-03：增强 Google Ads 脚本日志输出，区分"无点击增长"与"有增长但无联盟链接"，修复换链条件逻辑。
+2026-02-03：重写 affiliate-links/lookup 接口，改为通过 campaignId 查询 AffiliateLink 表，使 Sheet 导入的 trackingUrl 可被脚本查询。
