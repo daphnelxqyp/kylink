@@ -168,3 +168,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：修复 alerting.ts 中 Prisma JSON 类型兼容性问题以通过构建。
 2026-02-03：移除 Prisma 命名空间导入以兼容服务器环境。
 2026-02-03：修复 groupBy _count 类型在不同环境下的兼容性问题。
+2026-02-03：为 getAlertStats 中的 groupBy 统计添加显式类型注解。
