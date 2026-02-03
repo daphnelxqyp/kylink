@@ -104,7 +104,9 @@ export async function POST(request: NextRequest) {
 
     // 建立查找映射
     type ExistingCampaign = typeof existingCampaigns[number]
-    const existingMap = new Map(existingCampaigns.map((c: ExistingCampaign) => [c.campaignId, c]))
+    const existingMap = new Map<string, ExistingCampaign>(
+      existingCampaigns.map((c) => [c.campaignId, c])
+    )
 
     // 7. 处理每个 campaign
     for (const campaign of campaigns) {
