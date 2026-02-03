@@ -178,4 +178,5 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：修正文档中环境变量文件权限与 create-admin 脚本执行方式，避免 sudo 运行时丢失 DATABASE_URL。
 2026-02-03：修复 campaigns/import 接口多租户隔离问题，添加会话认证确保数据导入到当前登录用户名下。
 2026-02-03：修复普通用户无法访问库存管理页面的权限问题，将 /api/v1/jobs/replenish 和 /api/v1/jobs/alerts 开放给 USER 角色。
+2026-02-03：补充开放 /api/v1/jobs/recovery 给 USER 角色，修复首页和租约回收页面的权限问题。
 2026-02-03：为库存管理页面的"补货所有低水位"按钮添加 SSE 实时进度反馈，显示补货状态和详细日志。

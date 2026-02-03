@@ -21,14 +21,18 @@ export const ADMIN_ONLY_ROUTES = ['/jobs', '/proxy-providers', '/users']
 
 /**
  * 仅管理员可访问的 API 路由
- * 注意：/api/v1/jobs/replenish 和 /api/v1/jobs/alerts 对普通用户开放（供 /stock 和 /alerts 页面使用）
+ *
+ * 注意：以下 jobs 子路由对普通用户开放（供对应页面使用）：
+ * - /api/v1/jobs/replenish（含 stream）→ 首页 + /stock
+ * - /api/v1/jobs/alerts → 首页 + /alerts
+ * - /api/v1/jobs/recovery → 首页 + /leases
+ * - /api/v1/jobs（根路由）→ 首页 + /settings
  */
 export const ADMIN_ONLY_API_ROUTES = [
   '/api/v1/admin/users',
   '/api/v1/admin/proxy-providers',
   '/api/v1/jobs/stock-cleanup',
   '/api/v1/jobs/lease-recovery',
-  '/api/v1/jobs/recovery',
 ]
 
 /**
