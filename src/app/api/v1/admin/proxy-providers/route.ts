@@ -72,9 +72,11 @@ export async function GET(_request: NextRequest) {
     })
 
     // 转换格式，将 assignedUsers 转为更简洁的结构
-    const formattedProviders = providers.map(provider => ({
+    type ProviderItem = typeof providers[number]
+    type AssignedUserItem = ProviderItem['assignedUsers'][number]
+    const formattedProviders = providers.map((provider: ProviderItem) => ({
       ...provider,
-      assignedUsers: provider.assignedUsers.map(au => au.user),
+      assignedUsers: provider.assignedUsers.map((au: AssignedUserItem) => au.user),
     }))
 
     return successResponse({ providers: formattedProviders, total: formattedProviders.length })

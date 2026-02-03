@@ -22,7 +22,7 @@
 - **内存**: 4GB
 - **硬盘**: 40GB SSD
 - **带宽**: 3Mbps
-- **操作系统**: Ubuntu 20.04 LTS / CentOS 7+
+- **操作系统**: Ubuntu 20.04 LTS / CentOS 7+ / Debian 13+
 
 ### 推荐配置
 
@@ -94,6 +94,193 @@ chmod +x deploy.sh
 ### 方式二：手动部署
 
 参见 [详细部署步骤](#详细部署步骤)
+
+---
+
+## 🧭 Debian 13.3 无 Docker 一步步教程（小白版）
+
+> 适用于：全新 Debian 13.3 64 位服务器，不使用 Docker。
+
+### 步骤 1：SSH 连接服务器
+
+```bash
+ssh root@your-server-ip
+```
+
+### 步骤 2：更新系统并安装基础工具
+
+```bash
+apt update && apt -y upgrade
+apt -y install git curl unzip ca-certificates gnupg lsb-release build-essential
+```
+
+### 步骤 3：安装 Node.js 20（推荐）
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt -y install nodejs
+node -v
+npm -v
+```
+
+### 步骤 4：安装并配置 MySQL
+
+```bash
+apt -y install mysql-server
+systemctl enable mysql
+systemctl start mysql
+```
+
+创建数据库和用户（示例）：
+
+```bash
+mysql -u root <<'SQL'
+CREATE DATABASE kyads_suffixpool DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'kylink'@'localhost' IDENTIFIED BY 'YourStrongPassword123!';
+GRANT ALL PRIVILEGES ON kyads_suffixpool.* TO 'kylink'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+```
+
+### 步骤 5：安装 Nginx
+
+```bash
+apt -y install nginx
+systemctl enable nginx
+systemctl start nginx
+```
+
+### 步骤 6：克隆代码
+
+```bash
+cd /root
+git clone https://github.com/daphnelxqyp/kylink.git
+cd /root/kylink
+```
+
+### 步骤 7：配置环境变量
+
+```bash
+cp .env.production .env
+nano .env
+```
+
+必须修改的配置（示例）：
+
+```bash
+DATABASE_URL="mysql://kylink:YourStrongPassword123!@127.0.0.1:3306/kyads_suffixpool"
+NEXTAUTH_SECRET="your-nextauth-secret-at-least-32-characters-long"
+NEXTAUTH_URL="https://your-domain.com"
+NEXT_PUBLIC_API_BASE_URL="https://your-domain.com"
+CRON_SECRET="your-cron-secret-here"
+ALLOW_MOCK_SUFFIX="false"
+```
+
+生成安全密钥：
+
+```bash
+openssl rand -base64 32   # NEXTAUTH_SECRET
+openssl rand -hex 32      # CRON_SECRET
+```
+
+### 步骤 8：安装依赖并构建
+
+```bash
+npm ci
+npm run db:generate
+npm run db:push
+npm run build
+```
+
+### 步骤 9：创建管理员用户
+
+```bash
+npx ts-node --compiler-options '{"module":"commonjs"}' scripts/create-admin.ts
+```
+
+### 步骤 10：用 systemd 启动并守护服务
+
+创建服务文件：
+
+```bash
+cat >/etc/systemd/system/kylink.service <<'SERVICE'
+[Unit]
+Description=KyLink Next.js App
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/kylink
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+```
+
+启动服务：
+
+```bash
+systemctl daemon-reload
+systemctl enable kylink
+systemctl start kylink
+systemctl status kylink --no-pager
+```
+
+### 步骤 11：配置 Nginx 反向代理
+
+创建站点配置：
+
+```bash
+cat >/etc/nginx/sites-available/kylink <<'NGINX'
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:51001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+NGINX
+```
+
+启用配置并重启 Nginx：
+
+```bash
+ln -s /etc/nginx/sites-available/kylink /etc/nginx/sites-enabled/kylink
+nginx -t
+systemctl reload nginx
+```
+
+### 步骤 12：开放端口（如有防火墙）
+
+如果你启用了防火墙（如 UFW）：
+
+```bash
+ufw allow 22
+ufw allow 80
+ufw allow 443
+ufw enable
+ufw status
+```
+
+### 步骤 13：验证部署
+
+```bash
+curl http://127.0.0.1:51001/api/health
+curl http://your-domain.com/health
+```
 
 ---
 

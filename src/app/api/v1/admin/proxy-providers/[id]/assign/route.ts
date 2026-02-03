@@ -48,7 +48,7 @@ export async function POST(request: NextRequest, context: { params: { id: string
         select: { id: true },
       })
 
-      const existingUserIds = new Set(existingUsers.map(u => u.id))
+      const existingUserIds = new Set(existingUsers.map((u: { id: string }) => u.id))
       const missingUserIds = userIds.filter(id => !existingUserIds.has(id))
 
       if (missingUserIds.length > 0) {

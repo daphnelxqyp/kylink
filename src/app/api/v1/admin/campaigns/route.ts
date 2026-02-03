@@ -67,8 +67,8 @@ export async function GET(request: NextRequest) {
     })
 
     // 获取每个广告系列的联盟链接
-    const campaignIds = campaigns.map(c => c.campaignId)
-    const userIds = campaigns.map(c => c.userId)
+    const campaignIds = campaigns.map((c: { campaignId: string }) => c.campaignId)
+    const userIds = campaigns.map((c: { userId: string }) => c.userId)
 
     // 获取所有关联的联盟链接
     const affiliateLinks = await prisma.affiliateLink.findMany({
@@ -135,7 +135,8 @@ export async function GET(request: NextRequest) {
     }
 
     // 组装结果
-    const result = campaigns.map(campaign => {
+    type CampaignItem = typeof campaigns[number]
+    const result = campaigns.map((campaign: CampaignItem) => {
       const key = `${campaign.userId}:${campaign.campaignId}`
       const affiliateLink = linkMap.get(key)
       return {

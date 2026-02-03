@@ -154,3 +154,7 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
    - **生产环境**（`ALLOW_MOCK_SUFFIX=false`）：无可用代理时返回 `NO_PROXY_AVAILABLE` 错误，不生成模拟数据
    - **开发环境**（`ALLOW_MOCK_SUFFIX=true`）：无可用代理时生成模拟数据（`gclid=mock_...`）
    - ⚠️ **重要**：生产环境必须设置 `ALLOW_MOCK_SUFFIX=false`，否则会返回无效的追踪参数
+
+2026-02-02：补充 Debian 13.3 无 Docker 部署的逐步教程。
+2026-02-02：明确无 Docker 部署克隆目录为 /root/kylink。
+2026-02-02：将 Prisma binaryTargets 调整为 linux-openssl-3.0.x 适配 Debian。
