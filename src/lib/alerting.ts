@@ -493,14 +493,16 @@ export async function getAlertHistory(options: AlertQueryOptions = {}): Promise<
   } = options
 
   try {
+    // 构建查询条件，使用类型断言绕过 Prisma 枚举类型严格检查
+    const whereCondition: Parameters<typeof prisma.alert.findMany>[0]['where'] = {
+      deletedAt: null,
+      ...(userId ? { userId } : {}),
+      ...(type ? { type: type as string } : {}),
+      ...(level ? { level: level as string } : {}),
+      ...(acknowledged !== undefined ? { acknowledged } : {}),
+    }
     const alerts = await prisma.alert.findMany({
-      where: {
-        deletedAt: null,
-        ...(userId ? { userId } : {}),
-        ...(type ? { type } : {}),
-        ...(level ? { level } : {}),
-        ...(acknowledged !== undefined ? { acknowledged } : {}),
-      },
+      where: whereCondition,
       orderBy: {
         createdAt: 'desc',
       },
