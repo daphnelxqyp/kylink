@@ -183,6 +183,16 @@ export function processUsernameTemplate(template: string, countryCode: string): 
 /** IP 检测超时时间（毫秒） */
 const IP_CHECK_TIMEOUT = 8000
 
+/** 连接测试超时时间（毫秒） */
+const CONNECTIVITY_TEST_TIMEOUT = 10000
+
+/** 连接测试 URL（使用可靠的简单端点） */
+const CONNECTIVITY_TEST_URLS = [
+  'http://www.google.com/robots.txt',
+  'http://www.baidu.com/robots.txt',
+  'http://httpbin.org/status/200',
+]
+
 /**
  * 获取代理的实际出口 IP
  * 并行检测多个 IP 服务，返回第一个成功的结果
@@ -274,6 +284,76 @@ export async function getProxyExitIp(
           if (failedCount === totalServices) {
             console.error('[proxy-selector] All IP check services failed - proxy may be unreachable or authentication failed')
             resolve(null)
+          }
+        }
+      }
+    })
+  })
+}
+
+/**
+ * 测试代理连接是否可用（降级模式使用）
+ * 尝试通过代理访问简单的 URL，验证代理能正常工作
+ */
+export async function testProxyConnectivity(
+  proxy: SingleRequestProxy,
+  username: string,
+  password: string
+): Promise<boolean> {
+  // 构建 SOCKS5 代理 URL
+  const proxyUrl = proxy.url.replace(/^socks5?:\/\//, '')
+  const encodedUsername = username ? encodeURIComponent(username) : ''
+  const encodedPassword = password ? encodeURIComponent(password) : ''
+  const authPart = encodedUsername || encodedPassword
+    ? `${encodedUsername}:${encodedPassword}@`
+    : ''
+  const fullProxyUrl = `socks5://${authPart}${proxyUrl}`
+
+  console.log(`[proxy-selector] Connectivity test with username: ${username}`)
+
+  // 并行测试多个 URL，任意一个成功即可
+  return new Promise((resolve) => {
+    let resolved = false
+    let failedCount = 0
+    const totalUrls = CONNECTIVITY_TEST_URLS.length
+
+    CONNECTIVITY_TEST_URLS.forEach(async (testUrl) => {
+      const agent = new SocksProxyAgent(fullProxyUrl, { timeout: CONNECTIVITY_TEST_TIMEOUT })
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), CONNECTIVITY_TEST_TIMEOUT)
+
+      try {
+        const response = await fetch(testUrl, {
+          agent: agent as unknown as import('http').Agent,
+          signal: controller.signal as unknown as AbortSignal,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+        })
+
+        clearTimeout(timeout)
+
+        if (!resolved && response.ok) {
+          resolved = true
+          console.log(`[proxy-selector] Connectivity test passed via ${testUrl}`)
+          resolve(true)
+        } else if (!resolved) {
+          failedCount++
+          console.log(`[proxy-selector] Connectivity test failed for ${testUrl}: HTTP ${response.status}`)
+          if (failedCount === totalUrls) {
+            console.error('[proxy-selector] All connectivity tests failed')
+            resolve(false)
+          }
+        }
+      } catch (err) {
+        clearTimeout(timeout)
+        if (!resolved) {
+          failedCount++
+          const errMsg = err instanceof Error ? err.message : String(err)
+          console.log(`[proxy-selector] Connectivity test failed for ${testUrl}: ${errMsg}`)
+          if (failedCount === totalUrls) {
+            console.error('[proxy-selector] All connectivity tests failed')
+            resolve(false)
           }
         }
       }
@@ -484,36 +564,51 @@ export async function selectAvailableProxy(
     }
   }
   
-  // 第一轮全部失败，第二轮：跳过 IP 检测，直接返回第一个代理（降级模式）
-  console.log(`[proxy-selector] All proxies failed IP check, trying fallback mode (skip IP dedup)...`)
+  // 第一轮全部失败，第二轮：跳过 IP 检测，但先测试代理连接是否可用
+  console.log(`[proxy-selector] All proxies failed IP check, trying fallback mode with connectivity test...`)
   
   // 重置索引，从头开始
   context.currentIndex = startIndex
-  proxyConfig = getNextProxyConfig(context)
   
-  if (proxyConfig) {
-    const { provider } = proxyConfig
-    console.log(`[proxy-selector] Fallback: using ${provider.name} without IP verification`)
+  while ((proxyConfig = getNextProxyConfig(context)) !== null) {
+    const { provider, proxy, username } = proxyConfig
+    console.log(`[proxy-selector] Fallback: testing connectivity for ${provider.name}`)
     
-    // 生成一个随机 IP 作为占位符（不会用于去重记录）
-    const fallbackExitIp: ExitIpInfo = {
-      ip: `unknown-${Date.now()}`,
-      country: context.countryCode,
-    }
+    // 测试代理连接是否可用
+    const isConnectable = await testProxyConnectivity(proxy, username, proxy.password || '')
     
-    triedProxies.push({
-      providerName: provider.name,
-      host: provider.host,
-      priority: provider.priority,
-      success: true,
-      failReason: '降级模式：跳过 IP 验证',
-    })
-    
-    return {
-      success: true,
-      proxyConfig,
-      exitIpInfo: fallbackExitIp,
-      triedProxies: [...context.triedProxies, ...triedProxies],
+    if (isConnectable) {
+      console.log(`[proxy-selector] Fallback: ${provider.name} is connectable, using it`)
+      
+      // 生成一个随机 IP 作为占位符（不会用于去重记录）
+      const fallbackExitIp: ExitIpInfo = {
+        ip: `unknown-${Date.now()}`,
+        country: context.countryCode,
+      }
+      
+      triedProxies.push({
+        providerName: provider.name,
+        host: provider.host,
+        priority: provider.priority,
+        success: true,
+        failReason: '降级模式：连接测试通过，跳过 IP 验证',
+      })
+      
+      return {
+        success: true,
+        proxyConfig,
+        exitIpInfo: fallbackExitIp,
+        triedProxies: [...context.triedProxies, ...triedProxies],
+      }
+    } else {
+      console.log(`[proxy-selector] Fallback: ${provider.name} connectivity test failed`)
+      triedProxies.push({
+        providerName: provider.name,
+        host: provider.host,
+        priority: provider.priority,
+        success: false,
+        failReason: '降级模式：连接测试失败',
+      })
     }
   }
   
@@ -521,7 +616,7 @@ export async function selectAvailableProxy(
   return {
     success: false,
     triedProxies: [...context.triedProxies, ...triedProxies],
-    error: '所有代理供应商均不可用',
+    error: '所有代理供应商均不可用（IP 检测和连接测试均失败）',
   }
 }
 
