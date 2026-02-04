@@ -42,6 +42,7 @@ model User {
   suffixStocks   SuffixStockItem[]
   suffixLeases   SuffixLease[]
   suffixAssignments SuffixAssignment[]
+  suffixWriteLogs SuffixWriteLog[]
   clickStates    CampaignClickState[]
   proxyUsages    ProxyExitIpUsage[]
   auditLogs      AuditLog[]
@@ -230,6 +231,7 @@ model SuffixAssignment {
 
   @@unique([userId, idempotencyKey])
   @@index([userId, campaignId])
+  @@index([userId, campaignId, assignedAt])
   @@index([assignedAt])
   @@index([deletedAt])
 }
@@ -247,9 +249,11 @@ model SuffixWriteLog {
   reportedAt          DateTime @default(now()) @db.DateTime(3)
   deletedAt           DateTime? @db.DateTime(3)
 
+  user       User            @relation(fields: [userId], references: [id])
   assignment SuffixAssignment @relation(fields: [assignmentId], references: [id])
 
   @@index([userId, campaignId])
+  @@index([userId, campaignId, writeSuccess])
   @@index([writeSuccess])
   @@index([reportedAt])
   @@index([deletedAt])
