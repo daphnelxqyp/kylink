@@ -14,7 +14,13 @@
       "Bash(npm run build:*)",
       "Bash(npm run db:generate:*)",
       "Bash(npm run db:push:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree remove:*)"
     ]
   }
 }

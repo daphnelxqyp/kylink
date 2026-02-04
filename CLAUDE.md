@@ -199,3 +199,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-04：新增 /v1/suffix/report 接口用于回传写入结果。
 2026-02-04：废弃 /v1/suffix/ack 接口，保留用于向后兼容。
 2026-02-04：简化库存状态流转：available → consumed（跳过 leased 中间态）。
+2026-02-04：新增换链监控模块，独立页面展示今日换链统计（点击数、换链次数、成功率等）。

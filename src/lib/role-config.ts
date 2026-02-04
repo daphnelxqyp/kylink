@@ -10,8 +10,8 @@ export type UserRole = 'ADMIN' | 'USER'
  * 各角色可访问的菜单路径
  */
 export const ROLE_MENU_ACCESS: Record<UserRole, string[]> = {
-  USER: ['/', '/links', '/stock', '/leases', '/alerts', '/settings'],
-  ADMIN: ['/', '/links', '/stock', '/leases', '/alerts', '/jobs', '/proxy-providers', '/users', '/settings'],
+  USER: ['/', '/links', '/stock', '/monitoring', '/leases', '/alerts', '/settings'],
+  ADMIN: ['/', '/links', '/stock', '/monitoring', '/leases', '/alerts', '/jobs', '/proxy-providers', '/users', '/settings'],
 }
 
 /**
