@@ -36,6 +36,8 @@ interface SheetImportResult {
   updated: number
   affiliateLinksCreated: number
   affiliateLinksUpdated: number
+  stockItemsRestored: number
+  stockItemsDeleted: number
   error?: string
 }
 
@@ -45,6 +47,8 @@ interface ImportResponse {
   totalUpdated: number
   totalAffiliateLinksCreated: number
   totalAffiliateLinksUpdated: number
+  totalStockItemsRestored: number
+  totalStockItemsDeleted: number
   sheetResults: SheetImportResult[]
   errors: string[]
 }
@@ -90,6 +94,30 @@ export async function POST(request: NextRequest) {
     })
     console.log(`Soft deleted ${deleteResult.count} existing campaigns for user ${userId}`)
 
+    // 同时软删除该用户的所有库存（后续会恢复存在于 Sheet 中的 campaigns 的库存）
+    const stockDeleteResult = await prisma.suffixStockItem.updateMany({
+      where: {
+        userId,
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    })
+    console.log(`Soft deleted ${stockDeleteResult.count} existing stock items for user ${userId}`)
+
+    // 同时软删除该用户的所有联盟链接（后续会恢复/创建）
+    const linkDeleteResult = await prisma.affiliateLink.updateMany({
+      where: {
+        userId,
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    })
+    console.log(`Soft deleted ${linkDeleteResult.count} existing affiliate links for user ${userId}`)
+
     // 处理结果
     const response: ImportResponse = {
       totalImported: 0,
@@ -97,6 +125,8 @@ export async function POST(request: NextRequest) {
       totalUpdated: 0,
       totalAffiliateLinksCreated: 0,
       totalAffiliateLinksUpdated: 0,
+      totalStockItemsRestored: 0,
+      totalStockItemsDeleted: 0,
       sheetResults: [],
       errors: [],
     }
@@ -112,10 +142,21 @@ export async function POST(request: NextRequest) {
         response.totalUpdated += result.updated
         response.totalAffiliateLinksCreated += result.affiliateLinksCreated
         response.totalAffiliateLinksUpdated += result.affiliateLinksUpdated
+        response.totalStockItemsRestored += result.stockItemsRestored
       } else if (result.error) {
         response.errors.push(`${url}: ${result.error}`)
       }
     }
+
+    // 计算最终被删除的库存数量（未被恢复的）
+    const finalDeletedCount = await prisma.suffixStockItem.count({
+      where: {
+        userId,
+        deletedAt: { not: null },
+      },
+    })
+    // 计算本次删除的数量（原始删除数 - 恢复数）
+    response.totalStockItemsDeleted = stockDeleteResult.count - response.totalStockItemsRestored
 
     return successResponse(response)
   } catch (error) {
@@ -135,6 +176,8 @@ async function importFromSheet(url: string, userId: string): Promise<SheetImport
     updated: 0,
     affiliateLinksCreated: 0,
     affiliateLinksUpdated: 0,
+    stockItemsRestored: 0,
+    stockItemsDeleted: 0,
   }
 
   // 1. 读取表格数据
@@ -216,24 +259,31 @@ async function importFromSheet(url: string, userId: string): Promise<SheetImport
           // 验证 URL 格式
           new URL(trackingUrl)
 
-          // 查找现有的 AffiliateLink
+          // 查找现有的 AffiliateLink（包括已软删除的）
           const existingLink = await prisma.affiliateLink.findFirst({
             where: {
               userId,
               campaignId: campaign.campaignId,
-              deletedAt: null,
             },
-            select: { id: true, url: true },
+            select: { id: true, url: true, deletedAt: true },
           })
 
           if (existingLink) {
-            // 更新现有链接（仅当 URL 变化时）
-            if (existingLink.url !== trackingUrl) {
+            // 更新现有链接（恢复软删除 + 更新 URL）
+            const needsUrlUpdate = existingLink.url !== trackingUrl
+            const needsRestore = existingLink.deletedAt !== null
+            
+            if (needsUrlUpdate || needsRestore) {
               await prisma.affiliateLink.update({
                 where: { id: existingLink.id },
-                data: { url: trackingUrl },
+                data: { 
+                  url: trackingUrl,
+                  deletedAt: null, // 恢复软删除
+                },
               })
-              result.affiliateLinksUpdated++
+              if (needsUrlUpdate) {
+                result.affiliateLinksUpdated++
+              }
             }
           } else {
             // 创建新的 AffiliateLink
@@ -252,6 +302,22 @@ async function importFromSheet(url: string, userId: string): Promise<SheetImport
           // URL 格式无效，跳过
           console.warn(`Invalid trackingUrl for campaign ${campaign.campaignId}: ${trackingUrl}`)
         }
+      }
+
+      // 恢复该 campaign 的库存（如果之前有库存）
+      const stockRestoreResult = await prisma.suffixStockItem.updateMany({
+        where: {
+          userId,
+          campaignId: campaign.campaignId,
+          deletedAt: { not: null }, // 只恢复已软删除的
+        },
+        data: {
+          deletedAt: null,
+        },
+      })
+      if (stockRestoreResult.count > 0) {
+        console.log(`Restored ${stockRestoreResult.count} stock items for campaign ${campaign.campaignId}`)
+        result.stockItemsRestored += stockRestoreResult.count
       }
 
       result.imported++

@@ -187,3 +187,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-03：增强 Google Ads 脚本日志输出，区分"无点击增长"与"有增长但无联盟链接"，修复换链条件逻辑。
 2026-02-03：重写 affiliate-links/lookup 接口，改为通过 campaignId 查询 AffiliateLink 表，使 Sheet 导入的 trackingUrl 可被脚本查询。
 2026-02-04：修复跨天 delta 为负的问题，当检测到跨天时自动重置 lastAppliedClicks。
+2026-02-04：改进刷新广告系列功能，同步库存和联盟链接：只保留 Sheet 中存在的 campaigns 的数据。
