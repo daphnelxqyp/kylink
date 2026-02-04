@@ -614,6 +614,7 @@ export async function getAlertStats(userId?: string): Promise<AlertStats> {
       high_failure_rate: 0,
       no_stock_frequent: 0,
       system_health: 0,
+      STOCK_REPLENISH_FAILED: 0,
     }
     for (const stat of typeStats) {
       const alertType = stat.type as AlertType
