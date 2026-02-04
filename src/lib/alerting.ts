@@ -22,7 +22,7 @@ import prisma from './prisma'
 import { getStockStats } from './stock-producer'
 import { getLeaseHealth } from './lease-recovery'
 import { STOCK_CONFIG } from './utils'
-type AlertType = 'low_stock' | 'lease_timeout' | 'high_failure_rate' | 'no_stock_frequent' | 'system_health'
+type AlertType = 'low_stock' | 'lease_timeout' | 'high_failure_rate' | 'no_stock_frequent' | 'system_health' | 'STOCK_REPLENISH_FAILED'
 type AlertLevel = 'info' | 'warning' | 'critical'
 
 // ============================================
@@ -614,6 +614,7 @@ export async function getAlertStats(userId?: string): Promise<AlertStats> {
       high_failure_rate: 0,
       no_stock_frequent: 0,
       system_health: 0,
+      STOCK_REPLENISH_FAILED: 0,
     }
     for (const stat of typeStats) {
       const alertType = stat.type as AlertType
@@ -639,6 +640,7 @@ export async function getAlertStats(userId?: string): Promise<AlertStats> {
         high_failure_rate: 0,
         no_stock_frequent: 0,
         system_health: 0,
+        STOCK_REPLENISH_FAILED: 0,
       },
     }
   }

@@ -10,6 +10,8 @@ const nextConfig = {
   experimental: {
     // 禁用 webpack worker，使用单进程编译
     webpackBuildWorker: false,
+    // 启用 instrumentation hook
+    instrumentationHook: true,
   },
 
   // Webpack 配置优化 - 极限低内存模式

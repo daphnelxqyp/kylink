@@ -81,6 +81,11 @@ src/
    - 新 campaign 默认水位：`DEFAULT_WATERMARK = 5`
    - 配置位置：`src/lib/utils.ts:104-115` (`DYNAMIC_WATERMARK_CONFIG`)
    - 统计来源：从 `SuffixLease` 表的 `consumedAt` 字段统计过去 24 小时的消费速率
+7. **自动补货机制**：服务启动时自动开始定时补货任务
+   - 默认每 10 分钟扫描所有用户的低水位 campaigns
+   - 补货失败时自动重试 3 次（间隔 1 分钟）
+   - 重试后仍失败则写入告警表，可在管理后台查看
+   - 可通过 `ENABLE_AUTO_CRON=false` 关闭自动补货
 
 ## 主要 API 接口
 
@@ -118,6 +123,10 @@ ALLOW_MOCK_SUFFIX         # 是否允许模拟数据（开发：true，生产：
 MAX_BATCH_SIZE            # 批量接口最大条数（默认 500）
 STOCK_CONCURRENCY         # 单个 Campaign 并发生成数（默认 5）
 CAMPAIGN_CONCURRENCY      # 批量补货时 Campaign 并发数（默认 3）
+ENABLE_AUTO_CRON          # 是否启用自动定时任务（默认 false）
+REPLENISH_INTERVAL_MINUTES # 补货间隔分钟数（默认 10）
+REPLENISH_RETRY_TIMES     # 补货失败重试次数（默认 3）
+REPLENISH_RETRY_DELAY_MS  # 重试间隔毫秒数（默认 60000）
 ```
 
 ## 关键模式
@@ -193,3 +202,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-04：库存管理单个补货按钮也使用 SSE 流式接口实时显示补货进度。
 2026-02-04：修复国家代码转换：支持逗号分隔的国家全名，多国家时只取第一个。
 2026-02-04：编辑联盟链接弹窗支持手动修改国家代码。
+2026-02-04：实现自动补货定时任务，服务启动时自动开始，每 10 分钟补货所有低水位，失败时自动重试并发送告警。

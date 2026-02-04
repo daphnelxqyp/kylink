@@ -11,9 +11,10 @@
  * - 外部调度：通过 API 端点由外部 Cron 服务触发（生产推荐）
  */
 
-import { replenishAllLowStock } from './stock-producer'
+import { replenishAllLowStockWithRetry, type ReplenishFailure } from './stock-producer'
 import { recoverExpiredLeases } from './lease-recovery'
 import { checkAndAlert } from './alerting'
+import { prisma } from './prisma'
 
 // 任务执行结果
 export interface JobResult {
@@ -207,16 +208,31 @@ export function getJobStatus(): {
  * 初始化默认任务
  */
 export function initializeDefaultJobs(): void {
-  // 1. 库存补货任务 - 每 5 分钟
+  // 从环境变量读取补货间隔，默认 10 分钟
+  const replenishInterval = parseInt(
+    process.env.REPLENISH_INTERVAL_MINUTES || '10',
+    10
+  )
+
+  // 1. 库存补货任务 - 可配置间隔
   registerJob({
     name: 'stock_replenish',
     description: '检查并补充低水位库存',
-    intervalMinutes: 5,
+    intervalMinutes: replenishInterval,
     enabled: true,
-    handler: replenishAllLowStock,
+    handler: async () => {
+      const result = await replenishAllLowStockWithRetry()
+
+      // 如果有失败的 campaigns，写入告警
+      if (result.failures && result.failures.length > 0) {
+        await createReplenishFailureAlert(result.failures)
+      }
+
+      return result
+    },
   })
 
-  // 2. 租约回收任务 - 每 5 分钟
+  // 2. 租约回收任务 - 保持 5 分钟
   registerJob({
     name: 'lease_recovery',
     description: '回收超时未确认的租约',
@@ -225,7 +241,7 @@ export function initializeDefaultJobs(): void {
     handler: recoverExpiredLeases,
   })
 
-  // 3. 监控告警任务 - 每 10 分钟
+  // 3. 监控告警任务 - 保持 10 分钟
   registerJob({
     name: 'monitoring_alert',
     description: '检查系统状态并发送告警',
@@ -251,5 +267,51 @@ export async function executeAllJobs(): Promise<JobResult[]> {
   }
 
   return results
+}
+
+/**
+ * 创建补货失败告警
+ */
+async function createReplenishFailureAlert(failures: ReplenishFailure[]): Promise<void> {
+  try {
+    const totalFailed = failures.length
+    const level = totalFailed > 10 ? 'critical' : 'warning'
+
+    // 构建告警消息
+    const campaignList = failures
+      .slice(0, 10)  // 最多显示 10 个
+      .map(f => `- ${f.campaignName} (${f.campaignId}): ${f.error}`)
+      .join('\n')
+
+    const moreText = totalFailed > 10 ? `\n... 还有 ${totalFailed - 10} 个失败` : ''
+
+    const message = `自动补货任务失败 ${totalFailed} 个 campaigns：\n\n${campaignList}${moreText}`
+
+    // 写入告警表
+    await prisma.alert.create({
+      data: {
+        type: 'STOCK_REPLENISH_FAILED',
+        level,
+        title: '自动补货失败',
+        message,
+        metadata: {
+          totalFailed,
+          failures: failures.map(f => ({
+            campaignId: f.campaignId,
+            campaignName: f.campaignName,
+            userId: f.userId,
+            error: f.error,
+            retryCount: f.retryCount,
+          })),
+          timestamp: new Date().toISOString(),
+        },
+      },
+    })
+
+    console.log(`[Cron] Created ${level} alert for ${totalFailed} failed replenishments`)
+
+  } catch (error) {
+    console.error('[Cron] Failed to create replenish failure alert:', error)
+  }
 }
 
