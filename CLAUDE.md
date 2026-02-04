@@ -9,8 +9,8 @@ KyAds SuffixPool 是一个自动化系统，用于为 Google Ads Campaign 生成
 **核心流程：**
 1. Google Ads Scripts 周期性上报各 Campaign 的点击数
 2. 后端判定是否需要换链（`delta = nowClicks - lastAppliedClicks > 0`）
-3. 若需换链则返回新的 `finalUrlSuffix`（幂等、可重试）
-4. 脚本写入 suffix 后发送 ack 回执
+3. 若需换链则返回新的 `finalUrlSuffix` 和 `assignmentId`（幂等、可重试）
+4. 脚本写入 suffix 后调用 report 接口回传结果
 
 ## 常用命令
 
@@ -43,7 +43,7 @@ npx ts-node --compiler-options '{"module":"commonjs"}' scripts/create-admin.ts
 src/
 ├── app/
 │   ├── api/v1/           # REST API 路由
-│   │   ├── suffix/       # 核心：lease, ack, batch 接口
+│   │   ├── suffix/       # 核心：lease, report, batch 接口
 │   │   ├── admin/        # 用户、Campaign、代理管理
 │   │   ├── campaigns/    # 同步和导入
 │   │   └── jobs/         # 后台任务
@@ -51,7 +51,7 @@ src/
 │   └── login/            # 登录页
 ├── lib/                  # 业务逻辑
 │   ├── auth.ts           # API Key 验证
-│   ├── lease-service.ts  # 核心租约逻辑
+│   ├── lease-service.ts  # 核心分配逻辑
 │   ├── stock-producer.ts # 库存管理
 │   ├── suffix-generator.ts
 │   └── next-auth.ts      # Session 配置
@@ -71,25 +71,26 @@ src/
 ## 关键业务规则（必须遵守）
 
 1. **换链条件**：仅当 `nowClicks - lastAppliedClicks > 0` 时换链
-2. **幂等性**：同一 Campaign + 时间窗口返回同一租约（`idempotencyKey`）
-3. **单租约**：同一 Campaign 同时仅允许 1 个未 ack 的租约
-4. **库存状态流转**：`available → leased → consumed`（或 `failed/expired → available` 回收）
-5. **点击状态**：`lastAppliedClicks` 单调递增（更新时使用 `GREATEST()`）
-6. **动态库存水位**：库存低水位基于过去 24 小时消费速率动态计算
+2. **幂等性**：同一 Campaign + 点击数返回同一分配（`idempotencyKey = campaignId:clicks`）
+3. **库存状态流转**：`available → consumed`（简化后跳过 leased 中间态）
+4. **点击状态**：`lastAppliedClicks` 在分配时自动更新（单调递增）
+5. **动态库存水位**：库存低水位基于过去 24 小时消费速率动态计算
    - 公式：`ceil(avgPerHour * SAFETY_FACTOR)`，其中 `SAFETY_FACTOR = 2`
    - 范围：`MIN_WATERMARK = 3` 到 `MAX_WATERMARK = 20`
    - 新 campaign 默认水位：`DEFAULT_WATERMARK = 5`
    - 配置位置：`src/lib/utils.ts:104-115` (`DYNAMIC_WATERMARK_CONFIG`)
-   - 统计来源：从 `SuffixLease` 表的 `consumedAt` 字段统计过去 24 小时的消费速率
+   - 统计来源：从 `SuffixAssignment` 表的 `createdAt` 字段统计过去 24 小时的消费速率
 
 ## 主要 API 接口
 
 | 接口 | 用途 |
 |------|------|
 | `POST /v1/suffix/lease` | 请求换链 + 获取 suffix |
-| `POST /v1/suffix/ack` | 确认 suffix 已写入 |
-| `POST /v1/suffix/lease/batch` | 批量租约（默认 ≤500 条，可通过 `MAX_BATCH_SIZE` 环境变量配置） |
-| `POST /v1/suffix/ack/batch` | 批量回执（默认 ≤500 条，可通过 `MAX_BATCH_SIZE` 环境变量配置） |
+| `POST /v1/suffix/report` | 回传写入结果 |
+| `POST /v1/suffix/lease/batch` | 批量分配（默认 ≤500 条，可通过 `MAX_BATCH_SIZE` 环境变量配置） |
+| `POST /v1/suffix/report/batch` | 批量回传（默认 ≤500 条，可通过 `MAX_BATCH_SIZE` 环境变量配置） |
+| `POST /v1/suffix/ack` | **已废弃**（保留兼容） |
+| `POST /v1/suffix/ack/batch` | **已废弃**（保留兼容） |
 | `POST /v1/campaigns/sync` | 同步 Campaign 元数据 |
 | `POST /v1/campaigns/import` | 从 Google Sheets 导入 |
 
@@ -97,7 +98,7 @@ src/
 
 ```typescript
 // 成功
-{ success: true, data: {...}, action: "APPLY"|"NOOP", leaseId: "...", finalUrlSuffix: "..." }
+{ success: true, data: {...}, action: "APPLY"|"NOOP", assignmentId: "...", finalUrlSuffix: "..." }
 
 // 错误
 { success: false, error: { code: "ERROR_CODE", message: "..." } }
@@ -135,7 +136,7 @@ CAMPAIGN_CONCURRENCY      # 批量补货时 Campaign 并发数（默认 3）
 中间件按接口限流（默认 100次/分钟，认证接口 20次/分钟）。
 
 ### 异步库存补货
-租约发放后，使用 `setImmediate()` 非阻塞触发补货（`src/lib/stock-producer.ts`）。库存水位基于过去 24 小时消费速率动态计算：
+分配发放后，使用 `setImmediate()` 非阻塞触发补货（`src/lib/stock-producer.ts`）。库存水位基于过去 24 小时消费速率动态计算：
 - 新 campaign（无历史）：默认水位 5
 - 低消费：最低水位 3
 - 正常消费：`ceil(avgPerHour * 2)`
@@ -193,3 +194,8 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-04：库存管理单个补货按钮也使用 SSE 流式接口实时显示补货进度。
 2026-02-04：修复国家代码转换：支持逗号分隔的国家全名，多国家时只取第一个。
 2026-02-04：编辑联盟链接弹窗支持手动修改国家代码。
+2026-02-04：移除租约机制，改为分配-回传模式。
+2026-02-04：新增 SuffixAssignment 和 SuffixWriteLog 表，职责分离。
+2026-02-04：新增 /v1/suffix/report 接口用于回传写入结果。
+2026-02-04：废弃 /v1/suffix/ack 接口，保留用于向后兼容。
+2026-02-04：简化库存状态流转：available → consumed（跳过 leased 中间态）。
