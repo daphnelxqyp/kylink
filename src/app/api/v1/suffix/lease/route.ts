@@ -12,7 +12,7 @@
 
 import { NextRequest } from 'next/server'
 import { authenticateRequest } from '@/lib/auth'
-import { processSingleLease } from '@/lib/lease-service'
+import { processSingleAssignment } from '@/lib/assignment-service'
 import {
   parseJsonBody,
   validateRequired,
@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
       return errorResponse('VALIDATION_ERROR', 'cycleMinutes 必须在 10-60 之间', 422)
     }
 
-    // 5. 调用 lease-service 处理核心逻辑
-    const result = await processSingleLease(userId, {
+    // 5. 调用 assignment-service 处理核心逻辑
+    const result = await processSingleAssignment(userId, {
       campaignId: data.campaignId,
       nowClicks: data.nowClicks,
       observedAt: data.observedAt,
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     // 7. 返回成功响应
     return successResponse({
       action: result.action,
-      leaseId: result.leaseId,
+      assignmentId: result.assignmentId,
       finalUrlSuffix: result.finalUrlSuffix,
       reason: result.reason,
     })
