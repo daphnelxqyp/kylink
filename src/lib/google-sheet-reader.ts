@@ -818,12 +818,16 @@ const COUNTRY_NAME_TO_CODE: Record<string, string> = {
  * 
  * 支持输入格式：
  * - "United States" (国家全名)
+ * - "Kuwait, United States" (逗号分隔的多个国家全名)
  * - "geoTargetConstants/2840" (Google Ads 格式)
  * - "geoTargetConstants/2840; geoTargetConstants/2826" (多个)
  * - "US" (已经是国家代码，直接返回)
+ * - "GB,US" (逗号分隔的多个国家代码)
+ * 
+ * 注意：当有多个国家时，只返回第一个国家代码
  * 
  * @param geoString 原始地理位置字符串
- * @returns 国家代码（多个用逗号分隔）
+ * @returns 单个国家代码（两位大写字母）
  */
 export function convertGeoToCountryCode(geoString: string | null | undefined): string {
   if (!geoString) return ''
@@ -835,12 +839,13 @@ export function convertGeoToCountryCode(geoString: string | null | undefined): s
     return trimmed.toUpperCase()
   }
   
-  // 如果是逗号分隔的短格式列表
+  // 如果是逗号分隔的短格式列表，只取第一个
   if (/^[A-Z]{2,3}(,\s*[A-Z]{2,3})*$/i.test(trimmed)) {
-    return trimmed.toUpperCase()
+    const firstCode = trimmed.split(',')[0].trim()
+    return firstCode.toUpperCase()
   }
   
-  // 尝试匹配国家全名
+  // 尝试匹配国家全名（单个）
   const lowerTrimmed = trimmed.toLowerCase()
   if (COUNTRY_NAME_TO_CODE[lowerTrimmed]) {
     return COUNTRY_NAME_TO_CODE[lowerTrimmed]
@@ -851,41 +856,40 @@ export function convertGeoToCountryCode(geoString: string | null | undefined): s
   const matches = [...trimmed.matchAll(geoPattern)]
   
   if (matches.length > 0) {
-    // 转换每个 geoTargetConstants ID
-    const countryCodes: string[] = []
-    for (const match of matches) {
-      const geoId = match[1]
-      const countryCode = GEO_TARGET_TO_COUNTRY[geoId]
-      if (countryCode && !countryCodes.includes(countryCode)) {
-        countryCodes.push(countryCode)
-      }
-    }
-    
-    if (countryCodes.length > 0) {
-      return countryCodes.join(',')
+    // 只取第一个 geoTargetConstants ID
+    const geoId = matches[0][1]
+    const countryCode = GEO_TARGET_TO_COUNTRY[geoId]
+    if (countryCode) {
+      return countryCode
     }
     
     // 如果没有找到映射，返回原始ID（截取）
-    const ids = matches.map(m => m[1]).join(',')
-    return ids.length > 20 ? ids.substring(0, 20) : ids
+    return geoId.length > 10 ? geoId.substring(0, 10) : geoId
+  }
+  
+  // 尝试逗号分隔的多个国家名（如 "Kuwait, United States"）
+  if (trimmed.includes(',')) {
+    const parts = trimmed.split(',').map(p => p.trim())
+    for (const part of parts) {
+      const code = COUNTRY_NAME_TO_CODE[part.toLowerCase()]
+      if (code) {
+        return code  // 只返回第一个匹配的国家代码
+      }
+    }
   }
   
   // 尝试分号分隔的多个国家名
   if (trimmed.includes(';')) {
     const parts = trimmed.split(';').map(p => p.trim())
-    const codes: string[] = []
     for (const part of parts) {
       const code = COUNTRY_NAME_TO_CODE[part.toLowerCase()]
-      if (code && !codes.includes(code)) {
-        codes.push(code)
+      if (code) {
+        return code  // 只返回第一个匹配的国家代码
       }
-    }
-    if (codes.length > 0) {
-      return codes.join(',')
     }
   }
   
-  // 未知格式，返回原值（截取前20个字符）
-  return trimmed.length > 20 ? trimmed.substring(0, 20) : trimmed
+  // 未知格式，返回原值（截取前10个字符）
+  return trimmed.length > 10 ? trimmed.substring(0, 10) : trimmed
 }
 
