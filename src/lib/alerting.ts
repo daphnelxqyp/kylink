@@ -22,7 +22,7 @@ import prisma from './prisma'
 import { getStockStats } from './stock-producer'
 import { getLeaseHealth } from './lease-recovery'
 import { STOCK_CONFIG } from './utils'
-type AlertType = 'low_stock' | 'lease_timeout' | 'high_failure_rate' | 'no_stock_frequent' | 'system_health'
+type AlertType = 'low_stock' | 'lease_timeout' | 'high_failure_rate' | 'no_stock_frequent' | 'system_health' | 'STOCK_REPLENISH_FAILED'
 type AlertLevel = 'info' | 'warning' | 'critical'
 
 // ============================================
