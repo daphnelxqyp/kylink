@@ -6,6 +6,7 @@
  * 使用场景：
  * 1. 前端实时显示补货进度
  * 2. 提供更好的用户体验
+ * 3. 支持批量补货和单个 Campaign 补货
  * 
  * 安全：需要特殊的 CRON_SECRET 或管理员 API Key
  */
@@ -13,6 +14,7 @@
 import { NextRequest } from 'next/server'
 import { 
   replenishAllLowStock, 
+  replenishCampaign,
   ReplenishProgress,
 } from '@/lib/stock-producer'
 import { authenticateRequest } from '@/lib/auth'
@@ -22,7 +24,8 @@ import { parseJsonBody } from '@/lib/utils'
  * 请求体类型
  */
 interface ReplenishStreamRequest {
-  force?: boolean  // 是否强制补货（忽略水位检查）
+  force?: boolean      // 是否强制补货（忽略水位检查）
+  campaignId?: string  // 可选：指定单个 Campaign ID 补货
 }
 
 /**
@@ -66,8 +69,9 @@ export async function POST(request: NextRequest) {
   }
 
   const force = data?.force ?? false
+  const campaignId = data?.campaignId
 
-  console.log(`[replenish-stream] 开始流式补货, userId: ${userId || 'cron'}, force: ${force}`)
+  console.log(`[replenish-stream] 开始流式补货, userId: ${userId || 'cron'}, force: ${force}, campaignId: ${campaignId || 'all'}`)
 
   // 3. 创建 SSE 流响应
   const encoder = new TextEncoder()
@@ -75,11 +79,72 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // 执行补货逻辑，传入进度回调
-        await replenishAllLowStock(force, (progress: ReplenishProgress) => {
-          const data = formatSSE(progress)
-          controller.enqueue(encoder.encode(data))
-        }, userId)
+        if (campaignId) {
+          // 单个 Campaign 补货模式
+          if (!userId) {
+            throw new Error('单个 Campaign 补货需要用户鉴权')
+          }
+
+          // 发送开始进度
+          controller.enqueue(encoder.encode(formatSSE({
+            stage: 'init',
+            current: 0,
+            total: 1,
+            message: '正在开始补货...',
+            currentCampaign: campaignId,
+          })))
+
+          // 发送处理中进度
+          controller.enqueue(encoder.encode(formatSSE({
+            stage: 'processing',
+            current: 1,
+            total: 1,
+            message: `正在处理: ${campaignId}`,
+            currentCampaign: campaignId,
+          })))
+
+          // 执行单个补货
+          const result = await replenishCampaign(userId, campaignId, force)
+
+          // 发送结果进度
+          const statusEmoji = result.status === 'success' ? '✅' : result.status === 'skipped' ? '⏭️' : '❌'
+          const statusText = result.status === 'success' 
+            ? `+${result.producedCount} 条` 
+            : result.message || (result.status === 'skipped' ? '已跳过' : '失败')
+
+          controller.enqueue(encoder.encode(formatSSE({
+            stage: 'processing',
+            current: 1,
+            total: 1,
+            message: `${statusEmoji} ${campaignId}: ${statusText}`,
+            currentCampaign: campaignId,
+            result,
+          })))
+
+          // 发送完成进度
+          const finalStage = result.status === 'error' ? 'error' : 'done'
+          const finalMessage = result.status === 'success' 
+            ? `补货完成！成功生成 ${result.producedCount} 条库存`
+            : result.status === 'skipped'
+              ? `补货跳过：${result.message}`
+              : `补货失败：${result.message}`
+
+          controller.enqueue(encoder.encode(formatSSE({
+            stage: finalStage,
+            current: 1,
+            total: 1,
+            message: finalMessage,
+            currentCampaign: campaignId,
+            result,
+          })))
+
+        } else {
+          // 批量补货模式（原有逻辑）
+          await replenishAllLowStock(force, (progress: ReplenishProgress) => {
+            const data = formatSSE(progress)
+            controller.enqueue(encoder.encode(data))
+          }, userId)
+        }
       } catch (error) {
         console.error('[replenish-stream] 错误:', error)
         const errorProgress: ReplenishProgress = {

@@ -161,22 +161,116 @@ export default function StockPage() {
     }
   }, [])
 
-  const handleReplenishSingle = async (campaignId: string) => {
-    setLoading(true)
+  /**
+   * 使用 SSE 流式接口进行单个 Campaign 补货，实时显示进度
+   */
+  const handleReplenishSingle = useCallback(async (campaignId: string, campaignName?: string | null) => {
+    // 重置状态
+    setReplenishing(true)
+    setProgress({ stage: 'init', current: 0, total: 1, message: '正在连接...', currentCampaign: campaignId })
+    setProgressLogs([])
+    
+    // 创建 AbortController 用于取消请求
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     try {
-      await postJson('/api/v1/jobs/replenish', {
-        mode: 'single',
-        campaignId,
-        force: forceReplenish,
+      // 获取 API Key 用于认证
+      const apiKey = getStoredApiKey()
+      if (!apiKey) {
+        throw new Error('请先在设置页配置 API Key')
+      }
+
+      const response = await fetch('/api/v1/jobs/replenish/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ 
+          force: forceReplenish,
+          campaignId,  // 传入单个 Campaign ID
+        }),
+        signal: abortController.signal,
       })
-      message.success(`已触发 ${campaignId} 补货`)
+
+      if (!response.ok) {
+        throw new Error(`HTTP 错误: ${response.status}`)
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('无法获取响应流')
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let lastProgress: ReplenishProgress | null = null
+
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          break
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        
+        // 解析 SSE 消息（格式：data: {...}\n\n）
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''  // 保留不完整的部分
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) as ReplenishProgress
+              setProgress(data)
+              lastProgress = data
+              
+              // 如果是处理中的消息，添加到日志
+              if (data.stage === 'processing' && data.message) {
+                setProgressLogs(prev => {
+                  // 避免重复添加相同消息
+                  if (prev.length > 0 && prev[prev.length - 1] === data.message) {
+                    return prev
+                  }
+                  // 只保留最近 50 条日志
+                  const newLogs = [...prev, data.message]
+                  return newLogs.slice(-50)
+                })
+              }
+            } catch {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+
+      // 完成后刷新统计
       await loadStats()
+      
+      if (lastProgress?.stage === 'done') {
+        message.success(`${campaignName || campaignId} 补货完成！`)
+      }
+
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '补货失败')
+      if ((error as Error).name === 'AbortError') {
+        message.info('补货已取消')
+      } else {
+        message.error(error instanceof Error ? error.message : '补货失败')
+        setProgress({
+          stage: 'error',
+          current: 0,
+          total: 1,
+          message: error instanceof Error ? error.message : '补货失败',
+          currentCampaign: campaignId,
+        })
+      }
     } finally {
-      setLoading(false)
+      setReplenishing(false)
+      abortControllerRef.current = null
     }
-  }
+  }, [forceReplenish])
 
   const summary = stats?.summary
   const campaigns = useMemo(() => stats?.campaigns || [], [stats])
@@ -380,7 +474,11 @@ export default function StockPage() {
               key: 'action',
               width: 80,
               render: (_: unknown, record: StockCampaignStat) => (
-                <Button size="small" onClick={() => handleReplenishSingle(record.campaignId)}>
+                <Button 
+                  size="small" 
+                  onClick={() => handleReplenishSingle(record.campaignId, record.campaignName)}
+                  disabled={replenishing}
+                >
                   补货
                 </Button>
               ),
