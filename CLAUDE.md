@@ -119,7 +119,30 @@ ALLOW_MOCK_SUFFIX         # 是否允许模拟数据（开发：true，生产：
 MAX_BATCH_SIZE            # 批量接口最大条数（默认 500）
 STOCK_CONCURRENCY         # 单个 Campaign 并发生成数（默认 5）
 CAMPAIGN_CONCURRENCY      # 批量补货时 Campaign 并发数（默认 3）
+ENABLE_AUTO_CRON          # 是否启用内置调度器（推荐 false，使用系统 crontab）
 ```
+
+## 定时任务配置
+
+推荐使用系统 crontab 而非内置调度器。需要配置两个任务：
+
+| 任务 | 说明 | 频率 |
+|------|------|------|
+| `stock_replenish` | 补充低水位库存 | 每 10 分钟 |
+| `monitoring_alert` | 系统监控告警 | 每 10 分钟 |
+
+```bash
+# 快速安装（需 root 权限）
+sudo ./scripts/setup-crontab.sh
+
+# 或手动配置
+crontab -e
+# 添加：
+*/10 * * * * curl -fsS -X POST http://127.0.0.1:51001/api/v1/jobs -H "X-Cron-Secret: xxx" -H "Content-Type: application/json" -d '{"jobName":"stock_replenish"}' >> /var/log/kylink-cron.log 2>&1
+*/10 * * * * sleep 30 && curl -fsS -X POST http://127.0.0.1:51001/api/v1/jobs -H "X-Cron-Secret: xxx" -H "Content-Type: application/json" -d '{"jobName":"monitoring_alert"}' >> /var/log/kylink-cron.log 2>&1
+```
+
+详见 `.github/DEPLOYMENT.md` 中的"定时任务配置"章节。
 
 ## 关键模式
 
@@ -200,3 +223,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-04：废弃 /v1/suffix/ack 接口，保留用于向后兼容。
 2026-02-04：简化库存状态流转：available → consumed（跳过 leased 中间态）。
 2026-02-04：新增换链监控模块，独立页面展示今日换链统计（点击数、换链次数、成功率等）。
+2026-02-04：禁用内置定时调度器，改用系统 crontab；移除 lease_recovery 任务（已废弃）。

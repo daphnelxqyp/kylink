@@ -621,6 +621,80 @@ journalctl --vacuum-time=14d
 sudo -u kylink npm cache verify
 ```
 
+### 定时任务配置（Crontab）
+
+项目使用系统 crontab 调度定时任务，而非内置调度器。需要配置两个任务：
+
+| 任务 | 说明 | 建议频率 |
+|------|------|---------|
+| `stock_replenish` | 补充低水位库存 | 每 10 分钟 |
+| `monitoring_alert` | 系统监控告警 | 每 10 分钟 |
+
+**配置步骤：**
+
+1. 编辑 root 用户的 crontab：
+
+```bash
+crontab -e
+```
+
+2. 添加以下内容（将 `your-cron-secret` 替换为你的 `CRON_SECRET`）：
+
+```cron
+# KyLink 定时任务
+# 每 10 分钟：库存补货
+*/10 * * * * curl -fsS -X POST http://127.0.0.1:51001/api/v1/jobs -H "X-Cron-Secret: your-cron-secret" -H "Content-Type: application/json" -d '{"jobName":"stock_replenish"}' >> /var/log/kylink-cron.log 2>&1
+
+# 每 10 分钟：监控告警
+*/10 * * * * sleep 30 && curl -fsS -X POST http://127.0.0.1:51001/api/v1/jobs -H "X-Cron-Secret: your-cron-secret" -H "Content-Type: application/json" -d '{"jobName":"monitoring_alert"}' >> /var/log/kylink-cron.log 2>&1
+```
+
+> **说明：** 第二个任务加了 `sleep 30` 错开执行时间，避免同时触发。
+
+3. 验证 crontab 是否生效：
+
+```bash
+crontab -l
+```
+
+4. 查看定时任务日志：
+
+```bash
+tail -f /var/log/kylink-cron.log
+```
+
+5. 手动测试任务是否正常：
+
+```bash
+# 测试补货任务
+curl -fsS -X POST http://127.0.0.1:51001/api/v1/jobs \
+  -H "X-Cron-Secret: your-cron-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"jobName":"stock_replenish"}'
+
+# 测试告警任务
+curl -fsS -X POST http://127.0.0.1:51001/api/v1/jobs \
+  -H "X-Cron-Secret: your-cron-secret" \
+  -H "Content-Type: application/json" \
+  -d '{"jobName":"monitoring_alert"}'
+```
+
+**日志轮转（可选）：**
+
+为避免日志文件过大，可配置 logrotate：
+
+```bash
+cat > /etc/logrotate.d/kylink-cron << 'EOF'
+/var/log/kylink-cron.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+}
+EOF
+```
+
 ---
 
 ## 🐛 故障排查
