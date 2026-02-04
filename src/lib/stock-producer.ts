@@ -935,6 +935,12 @@ export function triggerReplenishAsync(userId: string, campaignId: string): void 
 
 /**
  * 获取库存统计信息
+ * 
+ * 只返回符合以下条件的 Campaign：
+ * 1. 有启用的联盟链接（enabled = true）
+ * 2. 联盟链接 URL 不为空
+ * 
+ * @param userId 可选用户 ID，仅返回该用户的 Campaign
  */
 export async function getStockStats(userId?: string): Promise<{
   campaigns: Array<{
@@ -955,18 +961,38 @@ export async function getStockStats(userId?: string): Promise<{
     totalConsumed: number
   }
 }> {
-  // 按 userId + campaignId + status 分组统计
-  const stats = await prisma.suffixStockItem.groupBy({
-    by: ['userId', 'campaignId', 'status'],
+  // 1. 首先获取符合条件的 Campaign 列表
+  //    条件：有启用的联盟链接（enabled=true 且 url 不为空）
+  const eligibleLinks = await prisma.affiliateLink.findMany({
     where: {
       ...(userId ? { userId } : {}),
+      enabled: true,
+      url: { not: '' },
       deletedAt: null,
     },
-    _count: true,
+    select: {
+      userId: true,
+      campaignId: true,
+    },
+    distinct: ['userId', 'campaignId'],
   })
 
-  // 获取所有相关 campaign 的名称
-  const campaignIds = [...new Set(stats.map(s => s.campaignId))]
+  // 如果没有符合条件的 Campaign，直接返回空结果
+  if (eligibleLinks.length === 0) {
+    return {
+      campaigns: [],
+      summary: {
+        totalCampaigns: 0,
+        lowStockCampaigns: 0,
+        totalAvailable: 0,
+        totalLeased: 0,
+        totalConsumed: 0,
+      },
+    }
+  }
+
+  // 2. 获取这些 Campaign 的名称
+  const campaignIds = [...new Set(eligibleLinks.map(l => l.campaignId))]
   const campaignMetas = await prisma.campaignMeta.findMany({
     where: {
       campaignId: { in: campaignIds },
@@ -974,13 +1000,18 @@ export async function getStockStats(userId?: string): Promise<{
       deletedAt: null,
     },
     select: {
+      userId: true,
       campaignId: true,
       campaignName: true,
     },
   })
-  const campaignNameMap = new Map(campaignMetas.map(c => [c.campaignId, c.campaignName]))
+  
+  // 创建 userId:campaignId -> campaignName 的映射
+  const campaignNameMap = new Map(
+    campaignMetas.map(c => [`${c.userId}:${c.campaignId}`, c.campaignName])
+  )
 
-  // 聚合每个 campaign 的统计
+  // 3. 初始化所有符合条件的 Campaign（包括没有库存的）
   const campaignMap = new Map<string, {
     userId: string
     campaignId: string
@@ -990,19 +1021,37 @@ export async function getStockStats(userId?: string): Promise<{
     consumed: number
   }>()
 
-  for (const stat of stats) {
-    const key = `${stat.userId}:${stat.campaignId}`
+  for (const link of eligibleLinks) {
+    const key = `${link.userId}:${link.campaignId}`
     if (!campaignMap.has(key)) {
       campaignMap.set(key, {
-        userId: stat.userId,
-        campaignId: stat.campaignId,
-        campaignName: campaignNameMap.get(stat.campaignId) || null,
+        userId: link.userId,
+        campaignId: link.campaignId,
+        campaignName: campaignNameMap.get(key) || null,
         available: 0,
         leased: 0,
         consumed: 0,
       })
     }
-    const entry = campaignMap.get(key)!
+  }
+
+  // 4. 统计库存数据
+  const stats = await prisma.suffixStockItem.groupBy({
+    by: ['userId', 'campaignId', 'status'],
+    where: {
+      ...(userId ? { userId } : {}),
+      campaignId: { in: campaignIds },
+      deletedAt: null,
+    },
+    _count: true,
+  })
+
+  // 5. 填充库存统计数据
+  for (const stat of stats) {
+    const key = `${stat.userId}:${stat.campaignId}`
+    const entry = campaignMap.get(key)
+    if (!entry) continue  // 跳过不在符合条件列表中的 Campaign
+    
     // _count 可能是 number 或 { _all: number } 取决于 Prisma 版本
     const count = typeof stat._count === 'number' ? stat._count : (stat._count as { _all: number })._all
     switch (stat.status) {
@@ -1018,7 +1067,7 @@ export async function getStockStats(userId?: string): Promise<{
     }
   }
 
-  // 转换为数组并计算总计
+  // 6. 转换为数组并计算总计
   //
   // 性能说明：needsReplenish 使用固定水位（STOCK_CONFIG.LOW_WATERMARK）而非动态水位
   // 原因：
@@ -1026,10 +1075,6 @@ export async function getStockStats(userId?: string): Promise<{
   // 2. 动态水位需要为每个 campaign 单独查询过去 24h 消费记录（N+1 查询问题）
   // 3. 实际补货逻辑（checkStockLevel/replenishCampaign）已使用动态水位
   // 4. Dashboard 显示的 needsReplenish 仅作为参考指标，不影响实际补货决策
-  //
-  // 如需精确显示，可考虑：
-  // - 定时任务预计算并缓存每个 campaign 的动态水位
-  // - 或在 campaign 详情页单独调用 calculateDynamicWatermark
   const campaigns = Array.from(campaignMap.values()).map(c => ({
     ...c,
     total: c.available + c.leased + c.consumed,
