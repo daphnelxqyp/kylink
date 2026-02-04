@@ -107,20 +107,14 @@ export async function processSingleLease(
     })
 
     // 如果已存在租约，直接返回（幂等）
+    // 简化后：租约直接 consumed，所以这里返回已消费的 suffix（防止重复请求）
     if (existingLease) {
-      if (existingLease.status === 'leased') {
-        return {
-          campaignId,
-          action: 'APPLY',
-          leaseId: existingLease.id,
-          finalUrlSuffix: existingLease.suffixStockItem.finalUrlSuffix,
-          reason: '返回已存在的活跃租约（幂等）',
-        }
-      }
       return {
         campaignId,
-        action: 'NOOP',
-        reason: '该窗口租约已处理完成',
+        action: 'APPLY',
+        leaseId: existingLease.id,
+        finalUrlSuffix: existingLease.suffixStockItem.finalUrlSuffix,
+        reason: '返回已存在的租约（幂等重试）',
       }
     }
 
@@ -228,30 +222,8 @@ export async function processSingleLease(
       }
     }
 
-    // 6. delta > 0，检查是否有活跃租约
-    const activeLease = await prisma.suffixLease.findFirst({
-      where: {
-        userId,
-        campaignId,
-        status: 'leased',
-        deletedAt: null,
-      },
-      include: {
-        suffixStockItem: true,
-      },
-    })
-
-    if (activeLease) {
-      return {
-        campaignId,
-        action: 'APPLY',
-        leaseId: activeLease.id,
-        finalUrlSuffix: activeLease.suffixStockItem.finalUrlSuffix,
-        reason: '返回已存在的活跃租约',
-      }
-    }
-
-    // 7. 从库存获取一条可用的 suffix
+    // 6. delta > 0，从库存获取一条可用的 suffix
+    // 注：简化后不再检查活跃租约（因为租约直接 consumed）
     const availableSuffix = await prisma.suffixStockItem.findFirst({
       where: {
         userId,
@@ -275,7 +247,8 @@ export async function processSingleLease(
       }
     }
 
-    // 8. 创建租约（事务）
+    // 8. 创建租约并直接消费（简化流程，无需 ACK）
+    const now = new Date()
     const [newLease] = await prisma.$transaction([
       prisma.suffixLease.create({
         data: {
@@ -285,17 +258,27 @@ export async function processSingleLease(
           idempotencyKey,
           nowClicksAtLeaseTime: nowClicks,
           windowStartEpochSeconds: BigInt(windowStartEpochSeconds),
-          status: 'leased',
-          leasedAt: new Date(),
+          status: 'consumed',  // 直接标记为已消费
+          leasedAt: now,
+          ackedAt: now,        // 自动确认
+          applied: true,       // 假设写入成功
         },
       }),
       prisma.suffixStockItem.update({
         where: { id: availableSuffix.id },
         data: {
-          status: 'leased',
-          leasedAt: new Date(),
+          status: 'consumed',  // 直接标记为已消费
+          leasedAt: now,
+          consumedAt: now,
         },
       }),
+      // 同时更新 lastAppliedClicks
+      prisma.$executeRaw`
+        UPDATE CampaignClickState
+        SET lastAppliedClicks = GREATEST(lastAppliedClicks, ${nowClicks}),
+            updatedAt = NOW()
+        WHERE userId = ${userId} AND campaignId = ${campaignId}
+      `,
     ])
 
     // 9. 异步检查库存水位，必要时补货

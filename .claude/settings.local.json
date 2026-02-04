@@ -6,7 +6,15 @@
       "Bash(npm run test:coverage:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(echo:*)",
+      "Bash(git worktree add:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run build:*)",
+      "Bash(npm run db:generate:*)",
+      "Bash(npm run db:push:*)",
+      "Bash(node -e:*)"
     ]
   }
 }

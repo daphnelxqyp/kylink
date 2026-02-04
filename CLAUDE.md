@@ -71,10 +71,10 @@ src/
 ## 关键业务规则（必须遵守）
 
 1. **换链条件**：仅当 `nowClicks - lastAppliedClicks > 0` 时换链
-2. **幂等性**：同一 Campaign + 时间窗口返回同一租约（`idempotencyKey`）
-3. **单租约**：同一 Campaign 同时仅允许 1 个未 ack 的租约
-4. **库存状态流转**：`available → leased → consumed`（或 `failed/expired → available` 回收）
-5. **点击状态**：`lastAppliedClicks` 单调递增（更新时使用 `GREATEST()`）
+2. **幂等性**：同一 Campaign + 点击数返回同一租约（`idempotencyKey = campaignId:clicks`）
+3. **简化流程**：Lease 时直接标记为 consumed，无需 ACK 回执
+4. **库存状态流转**：`available → consumed`（简化后跳过 leased 中间态）
+5. **点击状态**：`lastAppliedClicks` 在 Lease 时自动更新（单调递增）
 6. **动态库存水位**：库存低水位基于过去 24 小时消费速率动态计算
    - 公式：`ceil(avgPerHour * SAFETY_FACTOR)`，其中 `SAFETY_FACTOR = 2`
    - 范围：`MIN_WATERMARK = 3` 到 `MAX_WATERMARK = 20`
@@ -202,4 +202,6 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-04：库存管理单个补货按钮也使用 SSE 流式接口实时显示补货进度。
 2026-02-04：修复国家代码转换：支持逗号分隔的国家全名，多国家时只取第一个。
 2026-02-04：编辑联盟链接弹窗支持手动修改国家代码。
+2026-02-04：修复 idempotencyKey 生成逻辑，从基于时间窗口改为基于点击数，确保每次点击增长都能获取新租约。
+2026-02-04：简化租约机制，去掉 ACK 回执步骤，Lease 时直接标记为 consumed，降低脚本复杂度。
 2026-02-04：实现自动补货定时任务，服务启动时自动开始，每 10 分钟补货所有低水位，失败时自动重试并发送告警。
