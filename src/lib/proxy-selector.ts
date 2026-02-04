@@ -160,19 +160,28 @@ function generateRandomDigits(length: number): string {
 /**
  * 处理用户名模板
  * 支持变量：
- * - {country} / {COUNTRY}: 国家代码（小写/大写）
+ * - {COUNTRY}: 国家代码（大写，如 US、UK）
+ * - {country}: 国家代码（小写，如 us、uk）
  * - {random:N}: N位随机字符串（字母+数字）
  * - {session:N}: N位随机数字（纯数字，用于会话标识）
+ * 
+ * 注意：先处理大写变量 {COUNTRY}，再处理小写变量 {country}
+ * 避免不区分大小写匹配导致的替换顺序问题
  */
 export function processUsernameTemplate(template: string, countryCode: string): string {
   if (!template) return ''
   
   return template
-    .replace(/\{country\}/gi, countryCode.toLowerCase())
+    // 先精确匹配大写 {COUNTRY}，替换为大写国家代码
     .replace(/\{COUNTRY\}/g, countryCode.toUpperCase())
+    // 再精确匹配小写 {country}，替换为小写国家代码
+    .replace(/\{country\}/g, countryCode.toLowerCase())
     .replace(/\{random:(\d+)\}/gi, (_, len) => generateRandom(parseInt(len)))
     .replace(/\{session:(\d+)\}/gi, (_, len) => generateRandomDigits(parseInt(len)))
 }
+
+/** IP 检测超时时间（毫秒） */
+const IP_CHECK_TIMEOUT = 8000
 
 /**
  * 获取代理的实际出口 IP
@@ -193,6 +202,8 @@ export async function getProxyExitIp(
     : ''
   const fullProxyUrl = `socks5://${authPart}${proxyUrl}`
 
+  console.log(`[proxy-selector] Testing proxy with username: ${username}`)
+
   // 并行检测所有 IP 服务，返回第一个成功的结果
   return new Promise((resolve) => {
     let resolved = false
@@ -200,10 +211,10 @@ export async function getProxyExitIp(
     const totalServices = IP_CHECK_SERVICES.length
 
     IP_CHECK_SERVICES.forEach(async (service) => {
-      const agent = new SocksProxyAgent(fullProxyUrl, { timeout: 3000 })
+      const agent = new SocksProxyAgent(fullProxyUrl, { timeout: IP_CHECK_TIMEOUT })
 
       const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 3000)
+      const timeout = setTimeout(() => controller.abort(), IP_CHECK_TIMEOUT)
 
       try {
         const response = await fetch(service.url, {

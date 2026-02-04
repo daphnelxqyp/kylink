@@ -224,3 +224,6 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-04：简化库存状态流转：available → consumed（跳过 leased 中间态）。
 2026-02-04：新增换链监控模块，独立页面展示今日换链统计（点击数、换链次数、成功率等）。
 2026-02-04：禁用内置定时调度器，改用系统 crontab；移除 lease_recovery 任务（已废弃）。
+2026-02-04：修复 Google Ads 脚本未调用 report 接口的问题，添加 callReportBatchApi 函数并在写入后回传结果。
+2026-02-04：审查并修复脚本：DRY_RUN 模式不回传 report、循环中断前回传已收集数据、DEBUG 日志受开关控制。
+2026-02-05：修复代理用户名模板 {COUNTRY} 替换为小写的 bug，导致代理认证失败；IP 检测超时从 3 秒增加到 8 秒。
