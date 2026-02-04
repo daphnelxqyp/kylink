@@ -151,6 +151,15 @@ async function generateSuffixWithRetry(params: {
   return { result: lastResult, attempts }
 }
 
+// 补货失败详情
+export interface ReplenishFailure {
+  campaignId: string
+  campaignName: string
+  userId: string
+  error: string
+  retryCount: number
+}
+
 // 补货结果类型
 export interface ReplenishResult {
   campaignId: string
@@ -160,6 +169,9 @@ export interface ReplenishResult {
   currentCount: number
   status: 'success' | 'skipped' | 'error'
   message?: string
+  retryCount?: number
+  success?: boolean
+  error?: string
 }
 
 type GeneratedStockItem = {
@@ -182,6 +194,12 @@ export interface BatchReplenishResult {
   skipped: number
   errors: number
   details: ReplenishResult[]
+  // 新增字段用于重试逻辑
+  total?: number
+  success?: number
+  failed?: number
+  failures?: ReplenishFailure[]
+  results?: ReplenishResult[]
 }
 
 // 补货进度回调类型
@@ -549,6 +567,162 @@ export async function replenishCampaign(
     }
   }
 }
+
+/**
+ * 带重试的单个 campaign 补货
+ */
+async function replenishWithRetry(
+  userId: string,
+  campaignId: string,
+  force: boolean = false,
+  maxRetries: number = 3,
+  retryDelay: number = 60000
+): Promise<ReplenishResult> {
+  let lastError: Error | null = null
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Replenish] Attempt ${attempt}/${maxRetries} for campaign ${campaignId}`)
+
+      const result = await replenishCampaign(userId, campaignId, force)
+
+      if (result.status === 'success') {
+        if (attempt > 1) {
+          console.log(`[Replenish] Success on retry ${attempt} for campaign ${campaignId}`)
+        }
+        return { ...result, retryCount: attempt, success: true }
+      }
+
+      // 如果返回失败但没有抛出异常，记录错误
+      lastError = new Error(result.message || 'Unknown error')
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error))
+      console.error(`[Replenish] Attempt ${attempt} failed for campaign ${campaignId}:`, lastError.message)
+
+      // 如果不是最后一次尝试，等待后重试
+      if (attempt < maxRetries) {
+        console.log(`[Replenish] Waiting ${retryDelay}ms before retry...`)
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+      }
+    }
+  }
+
+  // 所有重试都失败
+  console.error(`[Replenish] All ${maxRetries} attempts failed for campaign ${campaignId}`)
+  return {
+    campaignId,
+    userId,
+    previousCount: 0,
+    producedCount: 0,
+    currentCount: 0,
+    status: 'error',
+    message: lastError?.message || 'All retry attempts failed',
+    retryCount: maxRetries,
+    success: false,
+    error: lastError?.message || 'All retry attempts failed',
+  }
+}
+
+/**
+ * 带重试的批量补货所有低水位 campaigns
+ */
+export async function replenishAllLowStockWithRetry(
+  force: boolean = false,
+  progressCallback?: (progress: ReplenishProgress) => void,
+  userId?: string
+): Promise<BatchReplenishResult> {
+  // 从环境变量读取重试配置
+  const maxRetries = parseInt(process.env.REPLENISH_RETRY_TIMES || '3', 10)
+  const retryDelay = parseInt(process.env.REPLENISH_RETRY_DELAY_MS || '60000', 10)
+
+  console.log(`[Replenish] Starting batch replenish with retry (maxRetries=${maxRetries}, retryDelay=${retryDelay}ms)`)
+
+  // 获取符合条件的 campaigns（状态启用 + 国家不为空 + 联盟链接不为空）
+  const eligibleCampaigns = await getEligibleCampaigns(userId)
+  console.log(`[Replenish] Found ${eligibleCampaigns.length} eligible campaigns`)
+
+  if (eligibleCampaigns.length === 0) {
+    return {
+      totalCampaigns: 0,
+      replenished: 0,
+      skipped: 0,
+      errors: 0,
+      details: [],
+      total: 0,
+      success: 0,
+      failed: 0,
+      failures: [],
+      results: [],
+    }
+  }
+
+  const results: ReplenishResult[] = []
+  const failures: ReplenishFailure[] = []
+
+  // 使用现有的并发控制
+  const concurrency = parseInt(process.env.CAMPAIGN_CONCURRENCY || '3', 10)
+  const limit = createConcurrencyLimiter(concurrency)
+
+  const tasks = eligibleCampaigns.map(campaign =>
+    limit(async () => {
+      const result = await replenishWithRetry(
+        campaign.userId,
+        campaign.campaignId,
+        force,
+        maxRetries,
+        retryDelay
+      )
+
+      results.push(result)
+
+      // 记录失败的 campaign
+      if (result.status === 'error') {
+        failures.push({
+          campaignId: campaign.campaignId,
+          campaignName: campaign.campaignName || campaign.campaignId,
+          userId: campaign.userId,
+          error: result.error || result.message || 'Unknown error',
+          retryCount: result.retryCount || maxRetries,
+        })
+      }
+
+      // 进度回调
+      if (progressCallback) {
+        progressCallback({
+          stage: 'processing',
+          current: results.length,
+          total: eligibleCampaigns.length,
+          message: `Processing ${campaign.campaignName || campaign.campaignId}`,
+          currentCampaign: campaign.campaignId,
+          result,
+        })
+      }
+
+      return result
+    })
+  )
+
+  await Promise.all(tasks)
+
+  const successCount = results.filter(r => r.status === 'success').length
+  const skippedCount = results.filter(r => r.status === 'skipped').length
+  console.log(`[Replenish] Batch complete: ${successCount}/${eligibleCampaigns.length} succeeded, ${failures.length} failed, ${skippedCount} skipped`)
+
+  return {
+    totalCampaigns: eligibleCampaigns.length,
+    replenished: successCount,
+    skipped: skippedCount,
+    errors: failures.length,
+    details: results,
+    total: eligibleCampaigns.length,
+    success: successCount,
+    failed: failures.length,
+    failures,
+    results,
+  }
+}
+
 
 /**
  * 获取符合补货条件的 Campaign 列表
