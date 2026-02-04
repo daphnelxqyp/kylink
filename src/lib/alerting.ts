@@ -127,11 +127,12 @@ async function createAlert(
 ): Promise<Alert> {
   try {
     // 1. 持久化到数据库
+    // 使用类型断言将本地类型转换为 Prisma 枚举类型
     const dbAlert = await prisma.alert.create({
       data: {
         userId: userId || null,
-        type,
-        level,
+        type: type as Parameters<typeof prisma.alert.create>[0]['data']['type'],
+        level: level as Parameters<typeof prisma.alert.create>[0]['data']['level'],
         title,
         message,
         metadata: (metadata ?? null) as Parameters<typeof prisma.alert.create>[0]['data']['metadata'],
