@@ -41,6 +41,8 @@ model User {
   affiliateLinks AffiliateLink[]
   suffixStocks   SuffixStockItem[]
   suffixLeases   SuffixLease[]
+  suffixAssignments SuffixAssignment[]
+  suffixWriteLogs SuffixWriteLog[]
   clickStates    CampaignClickState[]
   proxyUsages    ProxyExitIpUsage[]
   auditLogs      AuditLog[]
@@ -146,6 +148,7 @@ model SuffixStockItem {
   user                User           @relation(fields: [userId], references: [id])
   sourceAffiliateLink AffiliateLink? @relation(fields: [sourceAffiliateLinkId], references: [id])
   leases              SuffixLease[]
+  assignments         SuffixAssignment[]
 
   @@index([userId])
   @@index([campaignId])
@@ -205,6 +208,55 @@ enum LeaseStatus {
   consumed
   failed
   expired
+}
+
+// -----------------------------------------------------
+// 7. SuffixAssignment - Suffix 分配记录（新架构）
+// -----------------------------------------------------
+model SuffixAssignment {
+  id                      String   @id @default(uuid()) @db.Char(36)
+  userId                  String   @db.Char(36)
+  campaignId              String   @db.VarChar(64)
+  suffixStockItemId       String   @db.Char(36)
+  finalUrlSuffix          String   @db.Text
+  nowClicksAtAssignTime   Int
+  idempotencyKey          String   @db.VarChar(128)
+  windowStartEpochSeconds BigInt
+  assignedAt              DateTime @default(now()) @db.DateTime(3)
+  deletedAt               DateTime? @db.DateTime(3)
+
+  user            User            @relation(fields: [userId], references: [id])
+  suffixStockItem SuffixStockItem @relation(fields: [suffixStockItemId], references: [id])
+  writeLog        SuffixWriteLog?
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, campaignId])
+  @@index([userId, campaignId, assignedAt])
+  @@index([assignedAt])
+  @@index([deletedAt])
+}
+
+// -----------------------------------------------------
+// 8. SuffixWriteLog - 写入结果日志
+// -----------------------------------------------------
+model SuffixWriteLog {
+  id                  String   @id @default(uuid()) @db.Char(36)
+  assignmentId        String   @unique @db.Char(36)
+  userId              String   @db.Char(36)
+  campaignId          String   @db.VarChar(64)
+  writeSuccess        Boolean
+  writeErrorMessage   String?  @db.Text
+  reportedAt          DateTime @default(now()) @db.DateTime(3)
+  deletedAt           DateTime? @db.DateTime(3)
+
+  user       User            @relation(fields: [userId], references: [id])
+  assignment SuffixAssignment @relation(fields: [assignmentId], references: [id])
+
+  @@index([userId, campaignId])
+  @@index([userId, campaignId, writeSuccess])
+  @@index([writeSuccess])
+  @@index([reportedAt])
+  @@index([deletedAt])
 }
 
 // -----------------------------------------------------
