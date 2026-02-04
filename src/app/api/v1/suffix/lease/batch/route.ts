@@ -198,9 +198,39 @@ async function processSingleLease(
     }
 
     // 4. 计算 delta
-    const delta = nowClicks - clickState.lastAppliedClicks
+    let delta = nowClicks - clickState.lastAppliedClicks
 
-    // 5. delta <= 0，返回 NOOP
+    // 5. 跨天检测：如果 delta <= 0 且看起来像是跨天重置
+    // Google Ads 的 TODAY 点击数会在午夜重置为 0
+    if (delta <= 0 && clickState.lastAppliedClicks > 0) {
+      // 检查是否跨天：比较 lastObservedAt 的日期和今天的日期
+      const today = new Date()
+      const todayStr = today.toISOString().split('T')[0] // YYYY-MM-DD
+      const lastObservedDate = clickState.lastObservedAt 
+        ? clickState.lastObservedAt.toISOString().split('T')[0]
+        : null
+
+      // 如果 lastObservedAt 是昨天或更早，说明是跨天了，需要重置
+      if (lastObservedDate && lastObservedDate < todayStr) {
+        // 跨天重置：将 lastAppliedClicks 重置为 0
+        await prisma.campaignClickState.update({
+          where: {
+            userId_campaignId: {
+              userId,
+              campaignId,
+            },
+          },
+          data: {
+            lastAppliedClicks: 0,
+          },
+        })
+        // 重新计算 delta
+        delta = nowClicks
+        console.log(`[lease] Campaign ${campaignId}: 跨天重置 lastAppliedClicks (${clickState.lastAppliedClicks} -> 0), new delta=${delta}`)
+      }
+    }
+
+    // 6. delta <= 0，返回 NOOP
     if (delta <= 0) {
       return {
         campaignId,
