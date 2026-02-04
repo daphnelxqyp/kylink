@@ -378,8 +378,12 @@ export async function generateSuffix(
       // 4. 追踪成功，构建 finalUrlSuffix
     const finalUrlSuffix = buildFinalUrlSuffix(trackResult, exitIpInfo)
     
-    // 5. 记录代理使用（24小时去重）
-    await recordProxyUsage(userId, campaignId, exitIpInfo.ip)
+    // 5. 记录代理使用（24小时去重），跳过降级模式的未知 IP
+    if (!exitIpInfo.ip.startsWith('unknown-')) {
+      await recordProxyUsage(userId, campaignId, exitIpInfo.ip)
+    } else {
+      console.log(`[suffix-generator] Skipping IP usage record for fallback mode`)
+    }
     
       console.log(`[suffix-generator] Successfully generated suffix with proxy ${proxyConfig.provider.name}, final URL: ${trackResult.finalUrl}`)
     

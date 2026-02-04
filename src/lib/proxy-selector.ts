@@ -404,16 +404,20 @@ export function getNextProxyConfig(context: ProxySelectionContext): ProxyConfig 
  * 
  * 流程：
  * 1. 按优先级遍历代理供应商
- * 2. 获取每个代理的实际出口 IP
+ * 2. 获取每个代理的实际出口 IP（用于 24 小时去重）
  * 3. 检查出口 IP 是否24小时内已使用
  * 4. 返回第一个可用的代理
+ * 
+ * 改进：如果 IP 检测失败，仍然返回代理配置（跳过去重），让调用方决定是否使用
  */
 export async function selectAvailableProxy(
   context: ProxySelectionContext
 ): Promise<ProxySelectionResult> {
   const triedProxies: TriedProxy[] = []
   
+  // 第一轮：尝试找到能获取 IP 且 IP 未被使用的代理
   let proxyConfig: ProxyConfig | null
+  const startIndex = context.currentIndex
   
   while ((proxyConfig = getNextProxyConfig(context)) !== null) {
     const { provider, proxy, username } = proxyConfig
@@ -425,13 +429,13 @@ export async function selectAvailableProxy(
       const exitIpInfo = await getProxyExitIp(proxy, username, proxy.password || '')
       
       if (!exitIpInfo) {
-        console.log(`[proxy-selector] Failed to get exit IP for ${provider.name}`)
+        console.log(`[proxy-selector] Failed to get exit IP for ${provider.name}, will try without IP check`)
         triedProxies.push({
           providerName: provider.name,
           host: provider.host,
           priority: provider.priority,
           success: false,
-          failReason: '无法获取出口 IP',
+          failReason: '无法获取出口 IP（将尝试跳过 IP 检测）',
         })
         continue
       }
@@ -477,6 +481,39 @@ export async function selectAvailableProxy(
         success: false,
         failReason: errorMessage,
       })
+    }
+  }
+  
+  // 第一轮全部失败，第二轮：跳过 IP 检测，直接返回第一个代理（降级模式）
+  console.log(`[proxy-selector] All proxies failed IP check, trying fallback mode (skip IP dedup)...`)
+  
+  // 重置索引，从头开始
+  context.currentIndex = startIndex
+  proxyConfig = getNextProxyConfig(context)
+  
+  if (proxyConfig) {
+    const { provider } = proxyConfig
+    console.log(`[proxy-selector] Fallback: using ${provider.name} without IP verification`)
+    
+    // 生成一个随机 IP 作为占位符（不会用于去重记录）
+    const fallbackExitIp: ExitIpInfo = {
+      ip: `unknown-${Date.now()}`,
+      country: context.countryCode,
+    }
+    
+    triedProxies.push({
+      providerName: provider.name,
+      host: provider.host,
+      priority: provider.priority,
+      success: true,
+      failReason: '降级模式：跳过 IP 验证',
+    })
+    
+    return {
+      success: true,
+      proxyConfig,
+      exitIpInfo: fallbackExitIp,
+      triedProxies: [...context.triedProxies, ...triedProxies],
     }
   }
   
