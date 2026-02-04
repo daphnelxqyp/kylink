@@ -292,6 +292,7 @@ async function createReplenishFailureAlert(failures: ReplenishFailure[]): Promis
       data: {
         type: 'STOCK_REPLENISH_FAILED',
         level,
+        title: '自动补货失败',
         message,
         metadata: {
           totalFailed,
