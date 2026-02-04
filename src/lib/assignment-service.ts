@@ -104,9 +104,6 @@ export async function processSingleAssignment(
         idempotencyKey,
         deletedAt: null,
       },
-      include: {
-        suffixStockItem: true,
-      },
     })
 
     // 如果已存在分配，直接返回（幂等）
