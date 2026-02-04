@@ -374,6 +374,7 @@ enum AlertType {
   high_failure_rate
   no_stock_frequent
   system_health
+  STOCK_REPLENISH_FAILED  // 自动补货失败告警
 }
 
 enum AlertLevel {
