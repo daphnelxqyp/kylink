@@ -16,11 +16,37 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
-  const userId = searchParams.get('userId')
+  let userId = searchParams.get('userId')
+  const userName = searchParams.get('name')
+  const userEmail = searchParams.get('email')
   const testCountry = searchParams.get('country') || 'US'
   const testConnection = searchParams.get('test') === 'true'
 
   try {
+    // 如果提供了用户名或邮箱，先查找用户 ID
+    if (!userId && (userName || userEmail)) {
+      const user = await prisma.user.findFirst({
+        where: {
+          deletedAt: null,
+          OR: [
+            userName ? { name: { contains: userName } } : {},
+            userEmail ? { email: { contains: userEmail } } : {},
+          ].filter(obj => Object.keys(obj).length > 0),
+        },
+        select: { id: true, name: true, email: true },
+      })
+      if (user) {
+        userId = user.id
+      }
+    }
+
+    // 列出所有用户（方便查找）
+    const allUsers = await prisma.user.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, email: true },
+      orderBy: { createdAt: 'desc' },
+    })
+
     // 1. 检查系统中所有代理供应商
     const allProviders = await prisma.proxyProvider.findMany({
       where: { deletedAt: null },
@@ -141,6 +167,7 @@ export async function GET(request: NextRequest) {
     }
 
     return successResponse({
+      allUsers,  // 列出所有用户，方便查找
       diagnosis,
       connectionTest,
       testCountry,
