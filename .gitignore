@@ -79,3 +79,6 @@ nginx/ssl/*.crt
 
 # Google Ads Scripts (contain API keys)
 campaignto1.js
+
+# Git worktrees
+.worktrees/
