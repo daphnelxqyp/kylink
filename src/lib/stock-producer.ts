@@ -940,6 +940,7 @@ export async function getStockStats(userId?: string): Promise<{
   campaigns: Array<{
     userId: string
     campaignId: string
+    campaignName: string | null
     available: number
     leased: number
     consumed: number
@@ -964,10 +965,26 @@ export async function getStockStats(userId?: string): Promise<{
     _count: true,
   })
 
+  // 获取所有相关 campaign 的名称
+  const campaignIds = [...new Set(stats.map(s => s.campaignId))]
+  const campaignMetas = await prisma.campaignMeta.findMany({
+    where: {
+      campaignId: { in: campaignIds },
+      ...(userId ? { userId } : {}),
+      deletedAt: null,
+    },
+    select: {
+      campaignId: true,
+      campaignName: true,
+    },
+  })
+  const campaignNameMap = new Map(campaignMetas.map(c => [c.campaignId, c.campaignName]))
+
   // 聚合每个 campaign 的统计
   const campaignMap = new Map<string, {
     userId: string
     campaignId: string
+    campaignName: string | null
     available: number
     leased: number
     consumed: number
@@ -979,6 +996,7 @@ export async function getStockStats(userId?: string): Promise<{
       campaignMap.set(key, {
         userId: stat.userId,
         campaignId: stat.campaignId,
+        campaignName: campaignNameMap.get(stat.campaignId) || null,
         available: 0,
         leased: 0,
         consumed: 0,

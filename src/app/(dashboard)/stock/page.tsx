@@ -344,24 +344,42 @@ export default function StockPage() {
           loading={loading}
           dataSource={campaigns}
           columns={[
-            { title: 'Campaign ID', dataIndex: 'campaignId' },
+            { 
+              title: '广告系列名称', 
+              dataIndex: 'campaignName',
+              width: 280,
+              ellipsis: true,
+              render: (name: string | null, record: StockCampaignStat) => (
+                <Text ellipsis style={{ maxWidth: 260 }} title={name || record.campaignId}>
+                  {name || <Text type="secondary">{record.campaignId}</Text>}
+                </Text>
+              ),
+            },
+            { 
+              title: 'Campaign ID', 
+              dataIndex: 'campaignId',
+              width: 130,
+            },
             {
               title: '可用库存',
               dataIndex: 'available',
-              render: value => (value === 0 ? <Tag color="red">0</Tag> : value),
+              width: 90,
+              render: (value: number) => (value === 0 ? <Tag color="red">0</Tag> : value),
             },
-            { title: '租约中', dataIndex: 'leased' },
-            { title: '已消耗', dataIndex: 'consumed' },
-            { title: '总计', dataIndex: 'total' },
+            { title: '租约中', dataIndex: 'leased', width: 80 },
+            { title: '已消耗', dataIndex: 'consumed', width: 80 },
+            { title: '总计', dataIndex: 'total', width: 70 },
             {
               title: '状态',
               dataIndex: 'needsReplenish',
-              render: needs => (needs ? <Tag color="orange">需补货</Tag> : <Tag color="green">正常</Tag>),
+              width: 90,
+              render: (needs: boolean) => (needs ? <Tag color="orange">需补货</Tag> : <Tag color="green">正常</Tag>),
             },
             {
               title: '操作',
               key: 'action',
-              render: (_, record) => (
+              width: 80,
+              render: (_: unknown, record: StockCampaignStat) => (
                 <Button size="small" onClick={() => handleReplenishSingle(record.campaignId)}>
                   补货
                 </Button>

@@ -5,6 +5,7 @@
 export interface StockCampaignStat {
   userId: string
   campaignId: string
+  campaignName: string | null
   available: number
   leased: number
   consumed: number
