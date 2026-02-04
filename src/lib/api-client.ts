@@ -298,6 +298,14 @@ export function putJsonPublic<T>(path: string, payload: unknown): Promise<T> {
   })
 }
 
+export function patchJsonPublic<T>(path: string, payload: unknown): Promise<T> {
+  return apiRequest<T>(path, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+    requireAuth: false,
+  })
+}
+
 export function deleteJsonPublic<T>(path: string): Promise<T> {
   return apiRequest<T>(path, { method: 'DELETE', requireAuth: false })
 }

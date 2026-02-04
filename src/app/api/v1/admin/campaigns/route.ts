@@ -2,14 +2,23 @@
  * 管理端广告系列列表
  *
  * GET /v1/admin/campaigns - 获取广告系列列表（含联盟链接详情）
+ * PATCH /v1/admin/campaigns - 更新广告系列信息（如国家代码）
  */
 
 import { NextRequest } from 'next/server'
 import prisma from '@/lib/prisma'
-import { errorResponse, successResponse } from '@/lib/utils'
+import { errorResponse, successResponse, parseJsonBody } from '@/lib/utils'
 import { getSessionUser, getUserIdFilter } from '@/lib/session-auth'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * PATCH 请求体类型
+ */
+interface UpdateCampaignRequest {
+  campaignId: string
+  country?: string
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -156,6 +165,83 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Admin campaigns list error:', error)
     return errorResponse('INTERNAL_ERROR', '获取广告系列列表失败', 500)
+  }
+}
+
+/**
+ * PATCH /v1/admin/campaigns
+ * 
+ * 更新广告系列信息（如国家代码）
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    // 获取当前会话用户
+    const authResult = await getSessionUser()
+    if (!authResult.success) {
+      return errorResponse(authResult.error.code, authResult.error.message, authResult.error.status)
+    }
+
+    const userIdFilter = getUserIdFilter(authResult.user)
+
+    // 解析请求体
+    const { data, error: parseError } = await parseJsonBody<UpdateCampaignRequest>(request)
+    if (parseError || !data) {
+      return errorResponse('VALIDATION_ERROR', parseError || '请求体解析失败', 422)
+    }
+
+    const { campaignId, country } = data
+
+    if (!campaignId) {
+      return errorResponse('VALIDATION_ERROR', 'campaignId 为必填项', 422)
+    }
+
+    // 查找广告系列
+    const campaign = await prisma.campaignMeta.findFirst({
+      where: {
+        campaignId,
+        deletedAt: null,
+        ...(userIdFilter && { userId: userIdFilter }),
+      },
+    })
+
+    if (!campaign) {
+      return errorResponse('NOT_FOUND', '广告系列不存在', 404)
+    }
+
+    // 构建更新数据
+    const updateData: { country?: string | null } = {}
+    
+    // 更新国家代码（允许清空）
+    if (country !== undefined) {
+      // 验证国家代码格式（2-3 位大写字母，或空字符串）
+      const trimmedCountry = country.trim().toUpperCase()
+      if (trimmedCountry && !/^[A-Z]{2,3}$/.test(trimmedCountry)) {
+        return errorResponse('VALIDATION_ERROR', '国家代码格式无效，应为 2-3 位大写字母（如 US、GB）', 422)
+      }
+      updateData.country = trimmedCountry || null
+    }
+
+    // 如果没有要更新的字段
+    if (Object.keys(updateData).length === 0) {
+      return errorResponse('VALIDATION_ERROR', '没有要更新的字段', 422)
+    }
+
+    // 执行更新
+    const updated = await prisma.campaignMeta.update({
+      where: { id: campaign.id },
+      data: updateData,
+      select: {
+        id: true,
+        campaignId: true,
+        campaignName: true,
+        country: true,
+      },
+    })
+
+    return successResponse({ campaign: updated })
+  } catch (error) {
+    console.error('Update campaign error:', error)
+    return errorResponse('INTERNAL_ERROR', '更新广告系列失败', 500)
   }
 }
 

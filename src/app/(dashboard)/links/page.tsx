@@ -36,6 +36,7 @@ import {
   getStoredSpreadsheetIds,
   postJsonPublic,
   putJsonPublic,
+  patchJsonPublic,
 } from '@/lib/api-client'
 import type {
   CampaignItem,
@@ -298,6 +299,7 @@ interface LinkFormValues {
   url: string
   referrer: string
   enabled: boolean
+  country: string  // 国家代码（可编辑）
 }
 
 interface LinkEditModalProps {
@@ -321,6 +323,7 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
         url: campaign.affiliateLinkUrl || '',
         referrer: 'https://t.co', // 默认来路
         enabled: campaign.affiliateLinkEnabled ?? true,
+        country: campaign.country || '',  // 国家代码
       })
       // 清空之前的验证结果
       setVerifyResult(null)
@@ -334,13 +337,24 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
       const values = await form.validateFields()
       setLoading(true)
 
+      // 1. 如果国家代码有变化，先更新广告系列
+      const newCountry = values.country?.trim().toUpperCase() || ''
+      const oldCountry = campaign.country || ''
+      if (newCountry !== oldCountry) {
+        await patchJsonPublic('/api/v1/admin/campaigns', {
+          campaignId: campaign.campaignId,
+          country: newCountry,
+        })
+      }
+
+      // 2. 更新或创建联盟链接
       if (hasExistingLink) {
         // 更新现有链接
         await putJsonPublic(`/api/v1/admin/affiliate-links/${campaign.affiliateLinkId}`, {
           url: values.url,
           enabled: values.enabled,
         })
-        message.success('联盟链接已更新')
+        message.success('保存成功')
       } else {
         // 创建新链接
         await postJsonPublic('/api/v1/admin/affiliate-links', {
@@ -349,7 +363,7 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
           url: values.url,
           enabled: values.enabled,
         })
-        message.success('联盟链接已创建')
+        message.success('保存成功')
       }
       onSuccess()
       onClose()
@@ -384,11 +398,12 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
     try {
       // 构建请求参数
       const referrer = form.getFieldValue('referrer') || 'https://t.co'
+      const countryCode = form.getFieldValue('country')?.trim().toUpperCase() || campaign?.country || 'US'
       
       // 调用验证 API
       const result = await postJsonPublic<AffiliateVerifyResponse>('/api/affiliate-configs/verify', {
         affiliateLink: url,
-        countryCode: campaign?.country || 'US', // 使用广告系列的国家代码
+        countryCode, // 使用表单中编辑的国家代码
         targetDomain: extractDomain(campaign?.finalUrl ?? null), // 使用广告系列的目标域名
         referrer,
         maxRedirects: 10,
@@ -450,11 +465,7 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
               <Text type="secondary">广告系列：</Text>
               <Text strong style={{ marginLeft: 8 }}>{campaign.campaignName || campaign.campaignId}</Text>
             </Col>
-            <Col span={12}>
-              <Text type="secondary">国家：</Text>
-              <Tag color="blue" style={{ marginLeft: 8 }}>{campaign.country || '-'}</Tag>
-            </Col>
-            <Col span={12}>
+            <Col span={24}>
               <Text type="secondary">目标域名：</Text>
               <Text code style={{ marginLeft: 8 }}>{extractDomain(campaign.finalUrl)}</Text>
             </Col>
@@ -462,6 +473,32 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
         </div>
       )}
       <Form form={form} layout="vertical">
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item
+              name="country"
+              label="国家代码"
+              tooltip="2-3 位大写字母，如 US、GB、KW"
+              rules={[
+                {
+                  pattern: /^[A-Za-z]{2,3}$/,
+                  message: '请输入 2-3 位字母',
+                },
+              ]}
+            >
+              <Input 
+                placeholder="US" 
+                maxLength={3}
+                style={{ textTransform: 'uppercase' }}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={16}>
+            <Form.Item name="enabled" label="联盟链接状态" valuePropName="checked">
+              <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+            </Form.Item>
+          </Col>
+        </Row>
         <Form.Item
           name="url"
           label="联盟链接"
@@ -491,9 +528,6 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
           tooltip="模拟请求的来源页面，用于追踪验证"
         >
           <Input placeholder="https://t.co" />
-        </Form.Item>
-        <Form.Item name="enabled" label="状态" valuePropName="checked">
-          <Switch checkedChildren="启用" unCheckedChildren="禁用" />
         </Form.Item>
       </Form>
 
