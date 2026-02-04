@@ -256,9 +256,23 @@ export async function getProxyExitIp(
         clearTimeout(timeout)
         if (!resolved) {
           failedCount++
-          console.log(`[proxy-selector] ${service.name} failed: ${err instanceof Error ? err.message : err}`)
+          const errMsg = err instanceof Error ? err.message : String(err)
+          // 判断错误类型，提供更有用的诊断信息
+          let diagnosis = ''
+          if (errMsg.includes('ECONNREFUSED')) {
+            diagnosis = ' (代理连接被拒绝，检查代理服务是否运行)'
+          } else if (errMsg.includes('ETIMEDOUT') || errMsg.includes('timeout')) {
+            diagnosis = ' (连接超时，检查网络或代理响应)'
+          } else if (errMsg.includes('ENOTFOUND')) {
+            diagnosis = ' (DNS解析失败，检查代理地址)'
+          } else if (errMsg.includes('authentication') || errMsg.includes('auth')) {
+            diagnosis = ' (认证失败，检查用户名密码)'
+          } else if (errMsg.includes('SOCKS')) {
+            diagnosis = ' (SOCKS协议错误，可能是认证失败)'
+          }
+          console.log(`[proxy-selector] ${service.name} failed: ${errMsg}${diagnosis}`)
           if (failedCount === totalServices) {
-            console.error('[proxy-selector] All IP check services failed')
+            console.error('[proxy-selector] All IP check services failed - proxy may be unreachable or authentication failed')
             resolve(null)
           }
         }
@@ -298,10 +312,24 @@ export async function getAvailableProxies(
 
     if (proxyProviders.length === 0) {
       console.log(`[proxy-selector] No proxy providers assigned to user ${userId}`)
+      // 额外诊断：检查是否有启用的代理供应商
+      const totalEnabled = await prisma.proxyProvider.count({
+        where: { enabled: true, deletedAt: null },
+      })
+      console.log(`[proxy-selector] Total enabled proxy providers in system: ${totalEnabled}`)
+      // 检查用户的分配记录
+      const userAssignments = await prisma.proxyProviderUser.count({
+        where: { userId: userId },
+      })
+      console.log(`[proxy-selector] User ${userId} has ${userAssignments} proxy assignments in ProxyProviderUser table`)
       return null
     }
 
-    console.log(`[proxy-selector] Found ${proxyProviders.length} proxy providers for user ${userId}`)
+    // 打印每个代理供应商的详细信息
+    console.log(`[proxy-selector] Found ${proxyProviders.length} proxy providers for user ${userId}:`)
+    proxyProviders.forEach((p, i) => {
+      console.log(`[proxy-selector]   ${i + 1}. ${p.name}: ${p.host}:${p.port}, template: ${p.usernameTemplate}, enabled: ${p.enabled}`)
+    })
 
     // 2. 获取24小时内已使用的出口 IP 列表
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
@@ -360,7 +388,10 @@ export function getNextProxyConfig(context: ProxySelectionContext): ProxyConfig 
       protocol: 'socks5',
     }
 
-    console.log(`[proxy-selector] Trying proxy: ${provider.name} (priority=${provider.priority}, host=${provider.host})`)
+    console.log(`[proxy-selector] Trying proxy: ${provider.name} (priority=${provider.priority}, host=${provider.host}:${provider.port})`)
+    console.log(`[proxy-selector]   Template: ${provider.usernameTemplate}`)
+    console.log(`[proxy-selector]   Country: ${context.countryCode} → Username: ${username}`)
+    console.log(`[proxy-selector]   Password: ${password ? '***' + password.slice(-4) : '(none)'}`)
 
     return { provider, proxy, username }
   }
