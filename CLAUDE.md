@@ -227,3 +227,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-04：修复 Google Ads 脚本未调用 report 接口的问题，添加 callReportBatchApi 函数并在写入后回传结果。
 2026-02-04：审查并修复脚本：DRY_RUN 模式不回传 report、循环中断前回传已收集数据、DEBUG 日志受开关控制。
 2026-02-05：修复代理用户名模板 {COUNTRY} 替换为小写的 bug，导致代理认证失败；IP 检测超时从 3 秒增加到 8 秒。
+2026-02-05：增加代理降级模式：当 IP 检测失败时，先测试代理连接可用性，通过后跳过 IP 去重继续使用。
