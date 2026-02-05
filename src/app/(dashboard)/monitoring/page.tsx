@@ -170,15 +170,31 @@ export default function MonitoringPage() {
               title: '成功率',
               dataIndex: 'successRate',
               width: 90,
-              sorter: (a, b) => a.successRate - b.successRate,
-              render: (value: number) => `${value.toFixed(1)}%`,
+              sorter: (a, b) => (a.successRate || 0) - (b.successRate || 0),
+              render: (value: number | null) => (
+                value !== null ? `${value.toFixed(1)}%` : '-'
+              ),
             },
             {
               title: '最后换链时间',
               dataIndex: 'lastAssignedAt',
               width: 160,
               render: (date: Date | null) => (
-                date ? dayjs(date).format('HH:mm:ss') : '-'
+                date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
+              ),
+            },
+            {
+              title: '最后监控时间',
+              dataIndex: 'lastMonitoredAt',
+              width: 160,
+              sorter: (a, b) => {
+                if (!a.lastMonitoredAt) return 1
+                if (!b.lastMonitoredAt) return -1
+                return new Date(b.lastMonitoredAt).getTime() - new Date(a.lastMonitoredAt).getTime()
+              },
+              defaultSortOrder: 'descend',
+              render: (date: Date | null) => (
+                date ? dayjs(date).format('MM-DD HH:mm:ss') : '-'
               ),
             },
           ]}
