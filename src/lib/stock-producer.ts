@@ -19,6 +19,7 @@ import { Prisma } from '@prisma/client'
 import prisma from './prisma'
 import { STOCK_CONFIG, DYNAMIC_WATERMARK_CONFIG } from './utils'
 import { generateSuffix, isProxyServiceAvailable, type SuffixGenerateResult } from './suffix-generator'
+import { normalizeCountryCode } from './country-codes'
 
 // ============================================
 // 环境变量配置
@@ -391,7 +392,9 @@ export async function replenishCampaign(
     const campaign = await prisma.campaignMeta.findFirst({
       where: { userId, campaignId, deletedAt: null },
     })
-    const country = campaign?.country || 'US'
+
+    // 标准化国家代码（将 "United States" 转换为 "US"）
+    const country = normalizeCountryCode(campaign?.country)
     
     // 从 finalUrl 中提取目标域名（用于追踪时早停，与验证功能逻辑一致）
     let targetDomain: string | undefined

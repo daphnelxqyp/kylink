@@ -20,7 +20,12 @@
       "Bash(git pull:*)",
       "Bash(git merge:*)",
       "Bash(git branch:*)",
-      "Bash(git worktree remove:*)"
+      "Bash(git worktree remove:*)",
+      "Bash(node check-proxy.js:*)",
+      "Bash(node -r dotenv/config check-proxy.js:*)",
+      "Bash(ls:*)",
+      "Bash(node scripts/diagnose-campaign-proxy.js:*)",
+      "Bash(node scripts/diagnose-campaign-proxy-simple.js:*)"
     ]
   }
 }

@@ -24,6 +24,7 @@ import {
   type TriedProxy,
 } from './proxy-selector'
 import { trackRedirects, extractDomain, type TrackRedirectsResult } from './redirect/tracker'
+import { normalizeCountryCode } from './country-codes'
 
 // ============================================
 // 环境变量配置
@@ -447,7 +448,8 @@ export async function generateSuffixBatch(
     },
   })
 
-  const country = campaign?.country || 'US'
+  // 标准化国家代码（将 "United States" 转换为 "US"）
+  const country = normalizeCountryCode(campaign?.country)
 
   // 批量生成
   const results: SuffixGenerateResult[] = []
