@@ -51,6 +51,7 @@ function randomDelay(baseMs: number): Promise<void> {
 export interface CampaignAssignmentRequest {
   campaignId: string
   nowClicks: number
+  todayClicks?: number  // 新增：今日点击数（可选）
   observedAt: string
   windowStartEpochSeconds: number
   idempotencyKey: string

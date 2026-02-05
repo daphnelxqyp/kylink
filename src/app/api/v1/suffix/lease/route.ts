@@ -25,6 +25,7 @@ import {
 interface LeaseRequest {
   campaignId: string
   nowClicks: number
+  todayClicks?: number  // 新增：今日点击数（可选）
   observedAt: string
   scriptInstanceId: string
   cycleMinutes: number
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
     const result = await processSingleAssignment(userId, {
       campaignId: data.campaignId,
       nowClicks: data.nowClicks,
+      todayClicks: data.todayClicks,  // 新增：传递今日点击数
       observedAt: data.observedAt,
       windowStartEpochSeconds: data.windowStartEpochSeconds,
       idempotencyKey: data.idempotencyKey,
