@@ -269,6 +269,7 @@ model CampaignClickState {
   lastAppliedClicks  Int       @default(0)               // 上次成功换链时的 clicks
   lastObservedClicks Int?                                // 最后观测到的 clicks
   lastObservedAt     DateTime? @db.DateTime(3)           // 最后观测时间
+  todayClicks        Int       @default(0)               // 今日点击数（脚本上报）
   updatedAt          DateTime  @updatedAt @db.DateTime(3)
 
   // 虚拟关联
