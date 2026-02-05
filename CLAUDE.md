@@ -284,3 +284,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-05：简化换链逻辑，移除后端 delta 判断，信任脚本增长检测，幂等键保证不重复分配。
 2026-02-05：清理脚本：删除废弃的 callAckBatchApi 和测试函数，统一日志为中文，修复变量命名不一致。
 2026-02-05：API 返回可用库存数量，脚本日志显示剩余库存并汇总低库存告警。
+2026-02-05：修复 assignment-service.ts 中残留的 todayClicks 字段导致构建失败。
