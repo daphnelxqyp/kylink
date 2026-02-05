@@ -75,6 +75,8 @@ export interface CampaignAssignmentResult {
   reason?: string
   code?: string
   message?: string
+  /** 分配后该 Campaign 剩余可用库存数量 */
+  availableStock?: number
 }
 
 /**
@@ -358,6 +360,7 @@ async function processSingleAssignmentInternal(
         campaignId,
         code: 'NO_STOCK',
         message: '库存不足',
+        availableStock: 0,
       }
     }
 
@@ -393,7 +396,17 @@ async function processSingleAssignmentInternal(
       `,
     ])
 
-    // 8. 异步检查库存水位，必要时补货
+    // 8. 查询分配后剩余可用库存（用于脚本端展示）
+    const remainingStock = await prisma.suffixStockItem.count({
+      where: {
+        userId,
+        campaignId,
+        status: 'available',
+        deletedAt: null,
+      },
+    })
+
+    // 9. 异步检查库存水位，必要时补货
     triggerReplenishAsync(userId, campaignId)
 
     return {
@@ -402,6 +415,7 @@ async function processSingleAssignmentInternal(
       assignmentId: newAssignment.id,
       finalUrlSuffix: availableSuffix.finalUrlSuffix,
       reason: `点击数=${nowClicks}，分配新 suffix`,
+      availableStock: remainingStock,
     }
   } catch (error) {
     // 重新抛出错误，让外层重试循环处理
