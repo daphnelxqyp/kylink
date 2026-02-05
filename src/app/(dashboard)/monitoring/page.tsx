@@ -198,9 +198,11 @@ export default function MonitoringPage() {
               ),
             },
           ]}
-          locale={{ emptyText: '暂无换链记录' }}
+          locale={{ emptyText: '暂无数据' }}
           pagination={{
+            defaultPageSize: 50,  // 修改：默认每页 50 条
             showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50', '100'],
             showTotal: (total) => `共 ${total} 个广告系列`,
           }}
         />
