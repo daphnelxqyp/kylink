@@ -29,6 +29,37 @@ npx ts-node --compiler-options '{"module":"commonjs"}' scripts/create-admin.ts
 # 建议添加：npm run test（单元测试）、npm run test:e2e（集成测试）
 ```
 
+## Windows/PowerShell 注意事项
+
+本项目开发环境为 Windows + PowerShell，执行命令时需注意：
+
+1. **不支持 `&&` 链式命令**：需分开执行或使用 `;`
+   ```powershell
+   # ❌ 错误
+   git add . && git commit -m "msg"
+   
+   # ✅ 正确（分开执行）
+   git add .
+   git commit -m "msg"
+   ```
+
+2. **不支持 Bash heredoc 语法**：多行提交信息需使用单行或 `-m` 多次
+   ```powershell
+   # ❌ 错误
+   git commit -m "$(cat <<'EOF'
+   多行内容
+   EOF
+   )"
+   
+   # ✅ 正确（单行）
+   git commit -m "简短的提交信息"
+   
+   # ✅ 正确（多个 -m）
+   git commit -m "标题" -m "详细描述"
+   ```
+
+3. **路径分隔符**：使用正斜杠 `/` 或转义反斜杠 `\\`
+
 ## 架构
 
 ### 技术栈
