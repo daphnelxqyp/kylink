@@ -12,6 +12,36 @@ import prisma from './prisma'
 import { triggerReplenishAsync } from './stock-producer'
 
 // ============================================
+// 并发重试配置
+// ============================================
+
+/** 最大重试次数 */
+const MAX_RETRIES = 3
+/** 基础重试延迟（毫秒） */
+const BASE_RETRY_DELAY_MS = 50
+
+/**
+ * 检查是否是并发冲突错误（MySQL 1020）
+ */
+function isConcurrencyError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message
+    // MySQL 错误码 1020: Record has changed since last read
+    return message.includes('Record has changed since last read') ||
+           message.includes('code: 1020')
+  }
+  return false
+}
+
+/**
+ * 随机延迟（避免重试雷同）
+ */
+function randomDelay(baseMs: number): Promise<void> {
+  const jitter = Math.random() * baseMs
+  return new Promise(resolve => setTimeout(resolve, baseMs + jitter))
+}
+
+// ============================================
 // 类型定义
 // ============================================
 
@@ -82,6 +112,10 @@ export interface SingleReportResult {
  * 6. delta > 0 分配库存并立即标记为 consumed
  * 7. 事务：创建 SuffixAssignment + 更新 SuffixStockItem + 更新 lastAppliedClicks
  * 8. 异步触发库存补货检查
+ *
+ * 并发处理：
+ * - 使用重试机制处理 MySQL 乐观锁冲突（错误码 1020）
+ * - 最多重试 3 次，每次重试前随机延迟
  */
 export async function processSingleAssignment(
   userId: string,
@@ -96,6 +130,62 @@ export async function processSingleAssignment(
     meta,
   } = campaign
 
+  let lastError: unknown = null
+
+  // 重试循环，处理并发冲突
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await processSingleAssignmentInternal(
+        userId,
+        campaignId,
+        nowClicks,
+        observedAt,
+        windowStartEpochSeconds,
+        idempotencyKey,
+        meta
+      )
+    } catch (error) {
+      lastError = error
+      
+      // 如果是并发冲突错误，重试
+      if (isConcurrencyError(error) && attempt < MAX_RETRIES) {
+        console.log(`[AssignmentService] Concurrency conflict for campaign ${campaignId}, retry ${attempt}/${MAX_RETRIES}`)
+        await randomDelay(BASE_RETRY_DELAY_MS * attempt)
+        continue
+      }
+      
+      // 其他错误或重试次数用完，退出循环
+      break
+    }
+  }
+
+  // 所有重试都失败
+  console.error(`[AssignmentService] Assignment error for campaign ${campaignId} after ${MAX_RETRIES} retries:`, lastError)
+  return {
+    campaignId,
+    code: 'INTERNAL_ERROR',
+    message: '处理失败',
+  }
+}
+
+/**
+ * 内部分配逻辑（可重试）
+ */
+async function processSingleAssignmentInternal(
+  userId: string,
+  campaignId: string,
+  nowClicks: number,
+  observedAt: string,
+  windowStartEpochSeconds: number,
+  idempotencyKey: string,
+  meta?: {
+    campaignName: string
+    country: string
+    finalUrl: string
+    cid: string
+    mccId: string
+  }
+): Promise<CampaignAssignmentResult> {
   try {
     // 1. 检查幂等：是否已有相同 idempotencyKey 的分配
     const existingAssignment = await prisma.suffixAssignment.findFirst({
@@ -288,12 +378,8 @@ export async function processSingleAssignment(
       reason: `delta=${delta}，分配新 suffix`,
     }
   } catch (error) {
-    console.error(`[AssignmentService] Assignment error for campaign ${campaignId}:`, error)
-    return {
-      campaignId,
-      code: 'INTERNAL_ERROR',
-      message: '处理失败',
-    }
+    // 重新抛出错误，让外层重试循环处理
+    throw error
   }
 }
 

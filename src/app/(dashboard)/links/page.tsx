@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  Alert,
   Button,
   Card,
   Col,
@@ -185,6 +186,17 @@ function VerifyResultDisplay({ result }: VerifyResultProps) {
           </Col>
         </Row>
       </Card>
+
+      {/* 代理警告 */}
+      {result.proxyWarning && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="代理不可用"
+          description={result.proxyWarning}
+        />
+      )}
 
       {/* 错误信息 */}
       {result.error && (

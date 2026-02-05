@@ -6,6 +6,7 @@
  * 测试逻辑：
  * 1. TCP 端口连通性测试 - 验证代理地址和端口是否可达
  * 2. 可选：通过 DNS 解析验证域名有效性
+ * 3. SOCKS5 代理完整测试（包括认证）
  */
 
 import { NextRequest } from 'next/server'
@@ -13,6 +14,8 @@ import { createConnection, Socket } from 'net'
 import { lookup } from 'dns/promises'
 import prisma from '@/lib/prisma'
 import { errorResponse, successResponse } from '@/lib/utils'
+import { processUsernameTemplate, getProxyExitIp, testProxyConnectivity } from '@/lib/proxy-selector'
+import type { SingleRequestProxy } from '@/lib/redirect/tracker'
 
 /**
  * TCP 端口连通性测试
@@ -121,6 +124,17 @@ async function testDnsResolution(host: string): Promise<{ ok: boolean; message: 
 export async function POST(request: NextRequest, context: { params: { id: string } }) {
   const providerId = context.params.id
 
+  // 解析请求参数
+  let testType = 'basic'  // basic | full
+  let testCountry = 'US'
+  try {
+    const body = await request.json()
+    testType = body.testType || 'basic'
+    testCountry = body.country || 'US'
+  } catch {
+    // 忽略解析错误，使用默认值
+  }
+
   try {
     const provider = await prisma.proxyProvider.findFirst({
       where: { id: providerId, deletedAt: null },
@@ -129,6 +143,8 @@ export async function POST(request: NextRequest, context: { params: { id: string
         name: true,
         host: true,
         port: true,
+        usernameTemplate: true,
+        password: true,
         enabled: true,
       },
     })
@@ -157,10 +173,101 @@ export async function POST(request: NextRequest, context: { params: { id: string
     // 步骤2：TCP 端口连通性测试
     const tcpResult = await testTcpConnectivity(provider.host, provider.port)
 
+    if (!tcpResult.ok) {
+      return successResponse({
+        ok: false,
+        message: tcpResult.message,
+        details: {
+          step: 'tcp',
+          host: provider.host,
+          port: provider.port,
+          resolvedIp: dnsResult.ip,
+        },
+      })
+    }
+
+    // 步骤3：如果是完整测试，进行 SOCKS5 代理测试
+    if (testType === 'full') {
+      const username = processUsernameTemplate(provider.usernameTemplate || '', testCountry)
+      const password = provider.password || ''
+      
+      const proxy: SingleRequestProxy = {
+        url: `socks5://${provider.host}:${provider.port}`,
+        username: username || undefined,
+        password: password || undefined,
+        protocol: 'socks5',
+      }
+
+      // 先测试 IP 检测（完整的代理功能测试）
+      const exitIpInfo = await getProxyExitIp(proxy, username, password)
+      
+      if (exitIpInfo) {
+        return successResponse({
+          ok: true,
+          message: `SOCKS5 代理测试成功！出口 IP: ${exitIpInfo.ip}${exitIpInfo.country ? ` (${exitIpInfo.country})` : ''}`,
+          details: {
+            step: 'socks5',
+            host: provider.host,
+            port: provider.port,
+            resolvedIp: dnsResult.ip,
+            latencyMs: tcpResult.latencyMs,
+            exitIp: exitIpInfo.ip,
+            exitCountry: exitIpInfo.country,
+            processedUsername: username,
+            testCountry,
+          },
+        })
+      }
+
+      // IP 检测失败，尝试连接测试
+      const connectivityOk = await testProxyConnectivity(proxy, username, password)
+      
+      if (connectivityOk) {
+        return successResponse({
+          ok: true,
+          message: `SOCKS5 连接测试通过（无法获取出口 IP，但代理可用）。`,
+          details: {
+            step: 'socks5-connectivity',
+            host: provider.host,
+            port: provider.port,
+            resolvedIp: dnsResult.ip,
+            latencyMs: tcpResult.latencyMs,
+            processedUsername: username,
+            testCountry,
+            warning: '无法获取出口 IP，可能是 IP 检测服务暂时不可用',
+          },
+        })
+      }
+
+      // 完全失败
+      return successResponse({
+        ok: false,
+        message: `SOCKS5 代理测试失败。TCP 端口可达，但代理认证或连接可能有问题。`,
+        details: {
+          step: 'socks5-failed',
+          host: provider.host,
+          port: provider.port,
+          resolvedIp: dnsResult.ip,
+          latencyMs: tcpResult.latencyMs,
+          processedUsername: username,
+          hasPassword: !!password,
+          testCountry,
+          suggestions: [
+            '检查用户名模板格式是否正确（支持 {COUNTRY}、{country}、{session:N}、{random:N}）',
+            '检查密码是否正确',
+            '确认代理账户是否正常（未过期、未被封禁）',
+            '确认代理服务是否支持 SOCKS5 协议',
+          ],
+        },
+      })
+    }
+
+    // 基础测试成功
     return successResponse({
       ok: tcpResult.ok,
       message: tcpResult.message,
       details: {
+        step: 'tcp',
         host: provider.host,
         port: provider.port,
         resolvedIp: dnsResult.ip,

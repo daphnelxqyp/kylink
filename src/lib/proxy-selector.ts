@@ -271,18 +271,21 @@ export async function getProxyExitIp(
           let diagnosis = ''
           if (errMsg.includes('ECONNREFUSED')) {
             diagnosis = ' (代理连接被拒绝，检查代理服务是否运行)'
-          } else if (errMsg.includes('ETIMEDOUT') || errMsg.includes('timeout')) {
+          } else if (errMsg.includes('ETIMEDOUT') || errMsg.includes('timeout') || errMsg.includes('aborted')) {
             diagnosis = ' (连接超时，检查网络或代理响应)'
           } else if (errMsg.includes('ENOTFOUND')) {
             diagnosis = ' (DNS解析失败，检查代理地址)'
           } else if (errMsg.includes('authentication') || errMsg.includes('auth')) {
             diagnosis = ' (认证失败，检查用户名密码)'
           } else if (errMsg.includes('SOCKS')) {
-            diagnosis = ' (SOCKS协议错误，可能是认证失败)'
+            diagnosis = ' (SOCKS协议错误，可能是认证失败或代理不支持)'
+          } else if (errMsg.includes('ECONNRESET')) {
+            diagnosis = ' (连接被重置，代理可能拒绝请求)'
           }
           console.log(`[proxy-selector] ${service.name} failed: ${errMsg}${diagnosis}`)
           if (failedCount === totalServices) {
             console.error('[proxy-selector] All IP check services failed - proxy may be unreachable or authentication failed')
+            console.error(`[proxy-selector] Diagnostic: username=${username ? username.substring(0, 20) + '...' : '(empty)'}, password=${password ? '***' : '(empty)'}`)
             resolve(null)
           }
         }

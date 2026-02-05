@@ -99,6 +99,7 @@ interface VerifyWithFallbackResult {
   usedProxy?: ProxyConfig
   exitIpInfo?: ExitIpInfo  // 实际出口 IP 信息
   triedProxies: TriedProxy[]
+  proxyFallbackToDirectConnect?: boolean  // 是否因代理失败而降级到直连
 }
 
 /**
@@ -237,11 +238,15 @@ async function verifyWithProxyFallback(
     }
   }
   
+  // 标记是否因为代理失败而降级到直连
+  const proxyFallbackToDirectConnect = allTriedProxies.length > 0 && !allTriedProxies.some(p => p.success)
+  
   return {
     trackResult,
     usedProxy: undefined,
     exitIpInfo: undefined,
     triedProxies: allTriedProxies,
+    proxyFallbackToDirectConnect,
   }
 }
 
@@ -385,7 +390,7 @@ export async function POST(req: NextRequest) {
     // ========================================
     // 4) 执行验证（支持代理失败自动切换）
     // ========================================
-    const { trackResult, usedProxy, exitIpInfo, triedProxies } = await verifyWithProxyFallback(
+    const { trackResult, usedProxy, exitIpInfo, triedProxies, proxyFallbackToDirectConnect } = await verifyWithProxyFallback(
       request,
       proxyContext
     )
@@ -447,6 +452,10 @@ export async function POST(req: NextRequest) {
       proxyIp: proxyInfo,
       error: trackResult.errorMessage,
       triedProxies: triedProxies.length > 0 ? triedProxies : undefined,
+      // 如果代理全部失败并降级到直连，添加警告
+      proxyWarning: proxyFallbackToDirectConnect 
+        ? '所有代理均不可用，已降级为直连。补货功能将无法正常工作，请检查代理配置。'
+        : undefined,
     }
 
     return NextResponse.json<AffiliateVerifyResponse>(response, { status: 200 })

@@ -52,6 +52,13 @@ interface ProxyProviderTestResponse {
     resolvedIp?: string
     latencyMs?: number
     step?: string
+    exitIp?: string
+    exitCountry?: string
+    processedUsername?: string
+    testCountry?: string
+    hasPassword?: boolean
+    warning?: string
+    suggestions?: string[]
   }
 }
 
@@ -225,15 +232,16 @@ export default function ProxyProvidersPage() {
     }
   }
 
-  const handleTestProvider = async (provider: AdminProxyProviderItem) => {
+  const handleTestProvider = async (provider: AdminProxyProviderItem, testType: 'basic' | 'full' = 'basic') => {
     setLoading(true)
     try {
       const result = await postJsonPublic<ProxyProviderTestResponse>(
         `/api/v1/admin/proxy-providers/${provider.id}/test`,
-        {}
+        { testType, country: 'US' }
       )
       Modal[result.ok ? 'success' : 'warning']({
-        title: result.ok ? '✅ 测试成功' : '⚠️ 连接失败',
+        title: result.ok ? '✅ 测试成功' : '⚠️ 测试失败',
+        width: 500,
         content: (
           <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 12 }}>
             <Text strong>供应商：{provider.name}</Text>
@@ -248,16 +256,49 @@ export default function ProxyProvidersPage() {
                   {result.details.latencyMs !== undefined && (
                     <Text type="secondary">延迟：{result.details.latencyMs}ms</Text>
                   )}
+                  {result.details.exitIp && (
+                    <Text type="secondary">出口 IP：{result.details.exitIp}{result.details.exitCountry ? ` (${result.details.exitCountry})` : ''}</Text>
+                  )}
+                  {result.details.processedUsername && (
+                    <Text type="secondary">测试用户名：{result.details.processedUsername}</Text>
+                  )}
+                  {result.details.testCountry && (
+                    <Text type="secondary">测试国家：{result.details.testCountry}</Text>
+                  )}
                 </Space>
               </div>
             )}
-            {!result.ok && (
+            {result.details?.warning && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginTop: 8 }}
+                message="注意"
+                description={result.details.warning}
+              />
+            )}
+            {result.details?.suggestions && result.details.suggestions.length > 0 && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+                message="建议"
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {result.details.suggestions.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                }
+              />
+            )}
+            {!result.ok && testType === 'basic' && (
               <Alert
                 type="info"
                 showIcon
                 style={{ marginTop: 8 }}
                 message="提示"
-                description="此测试仅验证端口连通性。如果端口可达但代理仍不工作，请检查用户名模板和密码是否正确配置。"
+                description="基础测试仅验证端口连通性。如需测试完整代理功能（包括认证），请使用「完整测试」。"
               />
             )}
           </Space>
@@ -320,9 +361,12 @@ export default function ProxyProvidersPage() {
         title: '操作',
         key: 'action',
         render: (_: unknown, record: AdminProxyProviderItem) => (
-          <Space>
-            <Button size="small" icon={<ExperimentOutlined />} onClick={() => handleTestProvider(record)}>
-              测试
+          <Space wrap>
+            <Button size="small" icon={<ExperimentOutlined />} onClick={() => handleTestProvider(record, 'basic')}>
+              基础测试
+            </Button>
+            <Button size="small" type="primary" icon={<ExperimentOutlined />} onClick={() => handleTestProvider(record, 'full')}>
+              完整测试
             </Button>
             <Button size="small" icon={<TeamOutlined />} onClick={() => openAssignModal(record)}>
               分配

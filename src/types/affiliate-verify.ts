@@ -118,6 +118,9 @@ export interface AffiliateVerifyResponse {
   
   /** 尝试过的代理列表（用于调试和排查） */
   triedProxies?: TriedProxy[]
+  
+  /** 代理警告信息（当所有代理失败并降级到直连时） */
+  proxyWarning?: string
 }
 
 // ============================================
