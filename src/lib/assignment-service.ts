@@ -106,12 +106,15 @@ export interface SingleReportResult {
  * 核心流程：
  * 1. 检查幂等：是否已有相同 idempotencyKey 的分配
  * 2. 检查/创建 CampaignMeta（惰性同步）
- * 3. 获取/创建 CampaignClickState
- * 4. 计算 delta = nowClicks - lastAppliedClicks
- * 5. delta <= 0 返回 NOOP
- * 6. delta > 0 分配库存并立即标记为 consumed
- * 7. 事务：创建 SuffixAssignment + 更新 SuffixStockItem + 更新 lastAppliedClicks
- * 8. 异步触发库存补货检查
+ * 3. 获取/创建 CampaignClickState（含跨天重置逻辑）
+ * 4. 信任脚本增长检测，直接分配库存并标记为 consumed
+ * 5. 事务：创建 SuffixAssignment + 更新 SuffixStockItem + 更新 lastAppliedClicks
+ * 6. 异步触发库存补货检查
+ *
+ * 简化说明：
+ * - 脚本端检测点击增长（currentClicks > lastClicks）后才发送请求
+ * - 后端信任脚本判断，不再重复计算 delta
+ * - 幂等键 campaignId:nowClicks 保证同一点击数不重复分配
  *
  * 并发处理：
  * - 使用重试机制处理 MySQL 乐观锁冲突（错误码 1020）
@@ -284,34 +287,50 @@ async function processSingleAssignmentInternal(
         },
       })
     } else {
-      // 更新观测值
-      await prisma.campaignClickState.update({
-        where: {
-          userId_campaignId: {
-            userId,
-            campaignId,
+      // 检测跨天：如果观测日期变化且当前点击数小于 lastAppliedClicks，说明跨天了
+      const lastObservedDate = clickState.lastObservedAt
+        ? clickState.lastObservedAt.toISOString().slice(0, 10)
+        : null
+      const currentObservedDate = new Date(observedAt).toISOString().slice(0, 10)
+      const isDayChanged = lastObservedDate && currentObservedDate !== lastObservedDate
+      
+      // 跨天重置：如果跨天且当前点击数 < lastAppliedClicks，重置 lastAppliedClicks
+      if (isDayChanged && nowClicks < clickState.lastAppliedClicks) {
+        console.log(`[跨天重置] campaignId=${campaignId}, lastAppliedClicks: ${clickState.lastAppliedClicks} -> 0`)
+        clickState = await prisma.campaignClickState.update({
+          where: {
+            userId_campaignId: {
+              userId,
+              campaignId,
+            },
           },
-        },
-        data: {
-          lastObservedClicks: nowClicks,
-          lastObservedAt: new Date(observedAt),
-        },
-      })
-    }
-
-    // 4. 计算 delta
-    const delta = nowClicks - clickState.lastAppliedClicks
-
-    // 5. delta <= 0，返回 NOOP
-    if (delta <= 0) {
-      return {
-        campaignId,
-        action: 'NOOP',
-        reason: `delta=${delta}，无需换链`,
+          data: {
+            lastAppliedClicks: 0,
+            lastObservedClicks: nowClicks,
+            lastObservedAt: new Date(observedAt),
+          },
+        })
+      } else {
+        // 更新观测值
+        await prisma.campaignClickState.update({
+          where: {
+            userId_campaignId: {
+              userId,
+              campaignId,
+            },
+          },
+          data: {
+            lastObservedClicks: nowClicks,
+            lastObservedAt: new Date(observedAt),
+          },
+        })
       }
     }
 
-    // 6. 从库存获取一条可用的 suffix
+    // 4. 脚本已检测到点击增长，直接分配（信任脚本判断）
+    // 幂等键 campaignId:nowClicks 保证同一点击数不重复分配
+
+    // 5. 从库存获取一条可用的 suffix
     const availableSuffix = await prisma.suffixStockItem.findFirst({
       where: {
         userId,
@@ -375,7 +394,7 @@ async function processSingleAssignmentInternal(
       action: 'APPLY',
       assignmentId: newAssignment.id,
       finalUrlSuffix: availableSuffix.finalUrlSuffix,
-      reason: `delta=${delta}，分配新 suffix`,
+      reason: `点击数=${nowClicks}，分配新 suffix`,
     }
   } catch (error) {
     // 重新抛出错误，让外层重试循环处理
