@@ -7,7 +7,8 @@ import {
   LineChartOutlined,
   SwapOutlined,
   CheckCircleOutlined,
-  PercentageOutlined
+  PercentageOutlined,
+  DatabaseOutlined,  // 新增
 } from '@ant-design/icons'
 import { getJson } from '@/lib/api-client'
 import type { LinkChangeMonitoringResponse, CampaignLinkChangeStat } from '@/types/monitoring'
@@ -63,44 +64,49 @@ export default function MonitoringPage() {
 
       {/* 统计卡片 */}
       <Row gutter={[16, 16]}>
+        {/* 新增：总广告系列 */}
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="今日总点击数"
+              title="总广告系列"
+              value={summary?.totalCampaigns || 0}
+              suffix="个"
+              prefix={<DatabaseOutlined />}
+              valueStyle={{ color: '#13c2c2' }}
+            />
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic
+              title="今日点击总数"
               value={summary?.totalClicks || 0}
               prefix={<LineChartOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />
           </Card>
         </Col>
+
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="今日总换链次数"
+              title="今日换链次数"
               value={summary?.totalAssignments || 0}
               prefix={<SwapOutlined />}
               valueStyle={{ color: '#fa8c16' }}
             />
           </Card>
         </Col>
+
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="今日总成功次数"
-              value={summary?.totalSuccess || 0}
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="今日成功率"
+              title="换链成功率"
               value={summary?.successRate || 0}
               suffix="%"
               prefix={<PercentageOutlined />}
-              valueStyle={{ color: '#722ed1' }}
+              valueStyle={{ color: '#52c41a' }}
               precision={1}
             />
           </Card>
