@@ -128,6 +128,7 @@ export async function processSingleAssignment(
   const {
     campaignId,
     nowClicks,
+    todayClicks = 0,  // 新增：默认值 0
     observedAt,
     windowStartEpochSeconds,
     idempotencyKey,
@@ -143,6 +144,7 @@ export async function processSingleAssignment(
         userId,
         campaignId,
         nowClicks,
+        todayClicks,  // 新增：传递 todayClicks
         observedAt,
         windowStartEpochSeconds,
         idempotencyKey,
@@ -179,6 +181,7 @@ async function processSingleAssignmentInternal(
   userId: string,
   campaignId: string,
   nowClicks: number,
+  todayClicks: number,  // 新增参数
   observedAt: string,
   windowStartEpochSeconds: number,
   idempotencyKey: string,
@@ -285,6 +288,7 @@ async function processSingleAssignmentInternal(
           lastAppliedClicks: 0,
           lastObservedClicks: nowClicks,
           lastObservedAt: new Date(observedAt),
+          todayClicks,  // 新增
         },
       })
     } else {
@@ -309,6 +313,7 @@ async function processSingleAssignmentInternal(
             lastAppliedClicks: 0,
             lastObservedClicks: nowClicks,
             lastObservedAt: new Date(observedAt),
+            todayClicks,  // 新增
           },
         })
       } else {
@@ -323,6 +328,7 @@ async function processSingleAssignmentInternal(
           data: {
             lastObservedClicks: nowClicks,
             lastObservedAt: new Date(observedAt),
+            todayClicks,  // 新增
           },
         })
       }
