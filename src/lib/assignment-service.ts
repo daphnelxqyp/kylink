@@ -290,7 +290,6 @@ async function processSingleAssignmentInternal(
           lastAppliedClicks: 0,
           lastObservedClicks: nowClicks,
           lastObservedAt: new Date(observedAt),
-          todayClicks,  // 新增
         },
       })
     } else {
@@ -315,7 +314,6 @@ async function processSingleAssignmentInternal(
             lastAppliedClicks: 0,
             lastObservedClicks: nowClicks,
             lastObservedAt: new Date(observedAt),
-            todayClicks,  // 新增
           },
         })
       } else {
@@ -330,7 +328,6 @@ async function processSingleAssignmentInternal(
           data: {
             lastObservedClicks: nowClicks,
             lastObservedAt: new Date(observedAt),
-            todayClicks,  // 新增
           },
         })
       }
