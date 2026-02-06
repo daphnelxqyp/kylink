@@ -10,21 +10,20 @@ export type UserRole = 'ADMIN' | 'USER'
  * 各角色可访问的菜单路径
  */
 export const ROLE_MENU_ACCESS: Record<UserRole, string[]> = {
-  USER: ['/', '/links', '/stock', '/alerts', '/settings'],
+  USER: ['/', '/links', '/stock', '/settings'],
   ADMIN: ['/', '/links', '/stock', '/alerts', '/jobs', '/proxy-providers', '/users', '/settings'],
 }
 
 /**
  * 仅管理员可访问的页面路由
  */
-export const ADMIN_ONLY_ROUTES = ['/jobs', '/proxy-providers', '/users']
+export const ADMIN_ONLY_ROUTES = ['/alerts', '/jobs', '/proxy-providers', '/users']
 
 /**
  * 仅管理员可访问的 API 路由
  *
  * 注意：以下 jobs 子路由对普通用户开放（供对应页面使用）：
  * - /api/v1/jobs/replenish（含 stream）→ 首页 + /stock
- * - /api/v1/jobs/alerts → 首页 + /alerts
  * - /api/v1/jobs（根路由）→ 首页 + /settings
  */
 export const ADMIN_ONLY_API_ROUTES = [

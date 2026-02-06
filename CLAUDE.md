@@ -291,3 +291,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-06：P0 清理：删除 12 个废弃文件（租约模块 + 换链监控 + ACK 路由），移除 SuffixLease Schema，重构 alerting.ts 改用 SuffixWriteLog，API Key 移入 Script Properties。
 2026-02-06：修复脚本日志中间丢失问题：连续无增长循环压缩为单行摘要（如"循环 #2~#9 无增长 ×8"），释放 Logger 缓冲区空间确保所有写入事件完整输出。
 2026-02-06：将脚本 126 处 Logger.log 全部替换为 console.log，日志缓冲区从 ~10-20KB 提升到 100KB（Google Ads Scripts 官方推荐）。
+2026-02-06：实现设置页"复制同步脚本"和"复制换链脚本"按钮，自动替换 API Key、Spreadsheet URL、API Base URL 后复制到剪贴板。

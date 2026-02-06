@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Alert, Button, Card, Form, Input, Progress, Space, Typography, message } from 'antd'
-import { MinusOutlined, PlusOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { CopyOutlined, MinusOutlined, PlusOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import {
   clearStoredApiKey,
   getJson,
@@ -152,13 +152,64 @@ export default function SettingsPage() {
     }
   }
 
-  const handleCopySyncScript = (index: number) => {
-    message.info(`已选择第 ${index + 1} 个 Spreadsheet URL：复制同步脚本功能待接入`)
+  /**
+   * 通用脚本复制逻辑：获取模板 → 替换配置 → 复制到剪贴板
+   * @param index - Spreadsheet 配置的索引
+   * @param scriptName - 脚本模板名称 ('sync' | 'swap')
+   * @param label - 用于提示信息的脚本显示名
+   */
+  const handleCopyScript = async (index: number, scriptName: 'sync' | 'swap', label: string) => {
+    const apiKey = form.getFieldValue('apiKey')
+    const configs: SpreadsheetConfig[] = form.getFieldValue('spreadsheetConfigs') || []
+    const config = configs[index]
+
+    if (!apiKey) {
+      message.warning('请先填写 API Key')
+      return
+    }
+    if (!config?.url?.trim()) {
+      message.warning('请先填写 Spreadsheet URL')
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/v1/scripts/template?name=${scriptName}`)
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        message.error(data.error || '获取脚本模板失败')
+        return
+      }
+
+      // 获取当前站点 API Base URL
+      const apiBaseUrl = window.location.origin
+
+      // 替换配置值（匹配 CONFIG 对象中的字面量字符串）
+      let script = data.content as string
+      script = script.replace(
+        /(SPREADSHEET_URL:\s*')([^']*)(')/,
+        `$1${config.url.trim()}$3`,
+      )
+      script = script.replace(
+        /(API_KEY:\s*')([^']*)(')/,
+        `$1${apiKey.trim()}$3`,
+      )
+      script = script.replace(
+        /(API_BASE_URL:\s*')([^']*)(')/,
+        `$1${apiBaseUrl}$3`,
+      )
+
+      await navigator.clipboard.writeText(script)
+      message.success(`${label}已复制到剪贴板`)
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '复制失败，请重试')
+    }
   }
 
-  const handleCopySwapScript = (index: number) => {
-    message.info(`已选择第 ${index + 1} 个 Spreadsheet URL：复制换链脚本功能待接入`)
-  }
+  /** 复制同步脚本（campaign_sync_to_sheet.js） */
+  const handleCopySyncScript = (index: number) => handleCopyScript(index, 'sync', '同步脚本')
+
+  /** 复制换链脚本（campaignto1.js） */
+  const handleCopySwapScript = (index: number) => handleCopyScript(index, 'swap', '换链脚本')
 
   /**
    * 更新联盟链接 - 调用同步 API 并实时显示进度
@@ -349,8 +400,8 @@ export default function SettingsPage() {
                       <Input placeholder="用于脚本写入的 Google 表格 URL" />
                     </Form.Item>
                     <Space size={6}>
-                      <Button onClick={() => handleCopySyncScript(index)}>复制同步脚本</Button>
-                      <Button onClick={() => handleCopySwapScript(index)}>复制换链脚本</Button>
+                      <Button icon={<CopyOutlined />} onClick={() => handleCopySyncScript(index)}>复制同步脚本</Button>
+                      <Button icon={<CopyOutlined />} onClick={() => handleCopySwapScript(index)}>复制换链脚本</Button>
                     </Space>
                     <Button
                       icon={<MinusOutlined />}
