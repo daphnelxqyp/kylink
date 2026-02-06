@@ -153,6 +153,107 @@ function randomInt(min: number, max: number): number {
 }
 
 // ============================================
+// 国家代码 → 时区映射
+// ============================================
+
+/**
+ * 国家代码到主要 IANA 时区的映射
+ * 多时区国家取人口/商业中心所在的时区
+ */
+const COUNTRY_TIMEZONE_MAP: Record<string, string> = {
+  // 北美
+  US: 'America/New_York',
+  CA: 'America/Toronto',
+  MX: 'America/Mexico_City',
+  // 欧洲
+  GB: 'Europe/London',
+  UK: 'Europe/London',
+  DE: 'Europe/Berlin',
+  FR: 'Europe/Paris',
+  IT: 'Europe/Rome',
+  ES: 'Europe/Madrid',
+  NL: 'Europe/Amsterdam',
+  BE: 'Europe/Brussels',
+  AT: 'Europe/Vienna',
+  CH: 'Europe/Zurich',
+  SE: 'Europe/Stockholm',
+  NO: 'Europe/Oslo',
+  DK: 'Europe/Copenhagen',
+  FI: 'Europe/Helsinki',
+  PL: 'Europe/Warsaw',
+  CZ: 'Europe/Prague',
+  PT: 'Europe/Lisbon',
+  IE: 'Europe/Dublin',
+  GR: 'Europe/Athens',
+  RO: 'Europe/Bucharest',
+  HU: 'Europe/Budapest',
+  // 亚太
+  JP: 'Asia/Tokyo',
+  KR: 'Asia/Seoul',
+  CN: 'Asia/Shanghai',
+  HK: 'Asia/Hong_Kong',
+  TW: 'Asia/Taipei',
+  SG: 'Asia/Singapore',
+  AU: 'Australia/Sydney',
+  NZ: 'Pacific/Auckland',
+  IN: 'Asia/Kolkata',
+  TH: 'Asia/Bangkok',
+  VN: 'Asia/Ho_Chi_Minh',
+  MY: 'Asia/Kuala_Lumpur',
+  PH: 'Asia/Manila',
+  ID: 'Asia/Jakarta',
+  // 中东
+  AE: 'Asia/Dubai',
+  SA: 'Asia/Riyadh',
+  KW: 'Asia/Kuwait',
+  QA: 'Asia/Qatar',
+  IL: 'Asia/Jerusalem',
+  TR: 'Europe/Istanbul',
+  // 南美
+  BR: 'America/Sao_Paulo',
+  AR: 'America/Argentina/Buenos_Aires',
+  CL: 'America/Santiago',
+  CO: 'America/Bogota',
+  PE: 'America/Lima',
+  // 非洲
+  ZA: 'Africa/Johannesburg',
+  NG: 'Africa/Lagos',
+  EG: 'Africa/Cairo',
+  KE: 'Africa/Nairobi',
+  // 其他
+  RU: 'Europe/Moscow',
+  UA: 'Europe/Kiev',
+}
+
+/**
+ * 获取国家对应的当前本地小时数（0-23）
+ *
+ * @param countryCode 国家代码（如 US、GB、JP）
+ * @returns 该国家当前的本地小时
+ */
+function getLocalHour(countryCode: string, utcDate: Date): number {
+  const tz = COUNTRY_TIMEZONE_MAP[countryCode.toUpperCase()]
+  if (!tz) {
+    // 未知国家，回退到 UTC
+    return utcDate.getUTCHours()
+  }
+
+  try {
+    // 使用 Intl API 获取目标时区的小时
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric',
+      hour12: false,
+    })
+    const parts = formatter.formatToParts(utcDate)
+    const hourPart = parts.find((p) => p.type === 'hour')
+    return hourPart ? parseInt(hourPart.value, 10) : utcDate.getUTCHours()
+  } catch {
+    return utcDate.getUTCHours()
+  }
+}
+
+// ============================================
 // 时间分布算法
 // ============================================
 
@@ -160,64 +261,83 @@ function randomInt(min: number, max: number): number {
  * 生成人类作息曲线分布的点击时间计划
  *
  * 算法：
- * 1. 计算 startTime ~ endOfDay 之间每个整小时的权重
- * 2. 按权重比例分配每个小时应安排的点击数
+ * 1. 根据目标国家的本地时间确定当前处于一天中的哪个时段
+ * 2. 从"当前时刻"到"目标国家当日 23:59:59"按作息权重分配点击
  * 3. 在每个小时内随机散布点击时间（加随机抖动）
  *
+ * 时间基于目标国家的本地时间分布，但生成的 Date 对象是 UTC 绝对时间
+ *
  * @param count 目标点击数
- * @param startTime 开始时间（默认当前时间）
- * @returns 排好序的计划执行时间数组
+ * @param countryCode 目标国家代码（决定按哪个时区的作息分布）
+ * @param startTime 开始时间（默认当前时间，UTC）
+ * @returns 排好序的计划执行时间数组（UTC Date 对象）
  */
-export function generateClickSchedule(count: number, startTime?: Date): Date[] {
+export function generateClickSchedule(
+  count: number,
+  countryCode?: string,
+  startTime?: Date
+): Date[] {
   const now = startTime || new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth()
-  const day = now.getDate()
+  const country = (countryCode || '').toUpperCase()
 
-  // 当日结束时间 23:59:59.999
-  const endOfDay = new Date(year, month, day, 23, 59, 59, 999)
+  // 获取目标国家当前本地小时
+  const localHourNow = country ? getLocalHour(country, now) : now.getHours()
 
-  // 计算剩余毫秒
-  const remainingMs = endOfDay.getTime() - now.getTime()
-  if (remainingMs <= 0) {
-    // 已过当日，所有点击安排在 1 分钟内随机
+  // 计算目标国家当日剩余的整小时数（到 23:59）
+  const remainingHours = 23 - localHourNow // 从当前小时到 23 点
+  if (remainingHours < 0) {
+    // 已经过了 23 点，所有点击安排在 1 分钟内随机
     return Array.from({ length: count }, () =>
       new Date(now.getTime() + randomInt(1000, 60000))
     ).sort((a, b) => a.getTime() - b.getTime())
   }
 
-  // 计算当前小时（起始小时）和剩余小时的权重
-  const startHour = now.getHours()
-
   // 构建时间段列表及权重
+  // 每个 slot 是一个整小时（目标国家本地时间），映射到 UTC 时间偏移
   interface TimeSlot {
-    hour: number
-    startMs: number // 相对于 now 的偏移
+    localHour: number
+    startMs: number // 相对于 now 的偏移（毫秒）
     endMs: number
     weight: number
   }
 
   const slots: TimeSlot[] = []
 
-  for (let h = startHour; h <= 23; h++) {
-    // 该小时的开始和结束（绝对时间）
-    const slotStart = new Date(year, month, day, h, 0, 0, 0)
-    const slotEnd = new Date(year, month, day, h, 59, 59, 999)
+  for (let h = localHourNow; h <= 23; h++) {
+    // 计算这个本地小时相对于"当前时刻"的偏移
+    // 第一个小时 h == localHourNow：从现在开始
+    // 后续小时：按整小时递增
+    const hourOffset = h - localHourNow
 
-    // 裁剪为 [now, endOfDay] 范围
-    const effectiveStart = Math.max(slotStart.getTime(), now.getTime())
-    const effectiveEnd = Math.min(slotEnd.getTime(), endOfDay.getTime())
+    // slot 开始：当前小时从 now 开始，后续小时从整点开始
+    let slotStartMs: number
+    if (h === localHourNow) {
+      slotStartMs = 0 // 从现在开始
+    } else {
+      // 当前时刻在本地小时内的分钟偏移
+      const minutesIntoCurrentHour = now.getMinutes()
+      const secondsIntoCurrentHour = now.getSeconds()
+      const msIntoCurrentHour =
+        minutesIntoCurrentHour * 60 * 1000 + secondsIntoCurrentHour * 1000 + now.getMilliseconds()
+      // 到下一个整点的毫秒数 + 后续小时数
+      const msToNextHour = 3600000 - msIntoCurrentHour
+      slotStartMs = msToNextHour + (hourOffset - 1) * 3600000
+    }
 
-    if (effectiveEnd <= effectiveStart) continue
+    // slot 结束：该小时结束（59:59.999）
+    const slotEndMs = slotStartMs + (h === localHourNow
+      ? (3600000 - (now.getMinutes() * 60000 + now.getSeconds() * 1000 + now.getMilliseconds()))
+      : 3600000)
+
+    if (slotEndMs <= slotStartMs) continue
 
     // 计算该小时实际可用比例（首个小时可能不完整）
-    const fullHourMs = 60 * 60 * 1000
-    const availableRatio = (effectiveEnd - effectiveStart) / fullHourMs
+    const availableRatio = (slotEndMs - slotStartMs) / 3600000
 
     slots.push({
-      hour: h,
-      startMs: effectiveStart - now.getTime(),
-      endMs: effectiveEnd - now.getTime(),
+      localHour: h,
+      startMs: slotStartMs,
+      endMs: slotEndMs,
       weight: HOUR_WEIGHTS[h] * availableRatio,
     })
   }
@@ -259,6 +379,12 @@ export function generateClickSchedule(count: number, startTime?: Date): Date[] {
   // 排序
   schedule.sort((a, b) => a.getTime() - b.getTime())
 
+  console.log(
+    `[click-task] Generated ${schedule.length} clicks for country ${country || 'SERVER'} ` +
+    `(local hour: ${localHourNow}, slots: ${slots.length}, ` +
+    `first: ${schedule[0]?.toISOString()}, last: ${schedule[schedule.length - 1]?.toISOString()})`
+  )
+
   return schedule
 }
 
@@ -287,8 +413,8 @@ export async function createClickTask(params: {
 }> {
   const { userId, campaignId, affiliateLinkId, affiliateUrl, country, targetClicks } = params
 
-  // 生成点击时间计划
-  const schedule = generateClickSchedule(targetClicks)
+  // 生成点击时间计划（按目标国家本地时间的作息曲线分布）
+  const schedule = generateClickSchedule(targetClicks, country || undefined)
 
   // 创建任务和子项
   const task = await prisma.clickTask.create({
