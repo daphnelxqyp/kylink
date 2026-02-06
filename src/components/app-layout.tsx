@@ -8,13 +8,11 @@ import {
   SettingOutlined,
   DatabaseOutlined,
   AlertOutlined,
-  ClockCircleOutlined,
   SyncOutlined,
   UserOutlined,
   GlobalOutlined,
   LinkOutlined,
   LogoutOutlined,
-  LineChartOutlined,
 } from '@ant-design/icons'
 import { useSession, signOut } from 'next-auth/react'
 import { CONFIG_UPDATED_EVENT, getStoredApiKey } from '@/lib/api-client'
@@ -27,8 +25,6 @@ const allMenuItems = [
   { key: '/', label: '概览', icon: <DashboardOutlined /> },
   { key: '/links', label: '链接管理', icon: <LinkOutlined /> },
   { key: '/stock', label: '库存管理', icon: <DatabaseOutlined /> },
-  { key: '/monitoring', label: '换链监控', icon: <LineChartOutlined /> },
-  { key: '/leases', label: '租约回收', icon: <ClockCircleOutlined /> },
   { key: '/alerts', label: '告警中心', icon: <AlertOutlined /> },
   { key: '/jobs', label: '任务管理', icon: <SyncOutlined /> },
   { key: '/proxy-providers', label: '代理管理', icon: <GlobalOutlined /> },

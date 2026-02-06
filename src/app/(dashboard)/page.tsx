@@ -13,7 +13,6 @@ import type {
   AlertItem,
   AlertResponse,
   JobStatusResponse,
-  LeaseHealthResponse,
   StockStatsResponse,
 } from '@/types/dashboard'
 import NoApiKeyAlert from '@/components/no-api-key-alert'
@@ -28,7 +27,6 @@ function formatDateTime(value?: string): string {
 export default function DashboardPage() {
   const [loading, setLoading] = useState(false)
   const [stockStats, setStockStats] = useState<StockStatsResponse | null>(null)
-  const [leaseHealth, setLeaseHealth] = useState<LeaseHealthResponse | null>(null)
   const [alertData, setAlertData] = useState<AlertResponse | null>(null)
   const [jobStatus, setJobStatus] = useState<JobStatusResponse | null>(null)
   const [hasApiKey, setHasApiKey] = useState(false)
@@ -39,15 +37,13 @@ export default function DashboardPage() {
     }
     setLoading(true)
     try {
-      const [stock, alerts, lease, jobs] = await Promise.all([
+      const [stock, alerts, jobs] = await Promise.all([
         getJson<StockStatsResponse>('/api/v1/jobs/replenish'),
         getJson<AlertResponse>('/api/v1/jobs/alerts'),
-        getJson<LeaseHealthResponse>('/api/v1/jobs/recovery'),
         getJson<JobStatusResponse>('/api/v1/jobs'),
       ])
       setStockStats(stock)
       setAlertData(alerts)
-      setLeaseHealth(lease)
       setJobStatus(jobs)
     } catch (error) {
       const messageText = error instanceof Error ? error.message : '获取数据失败'
@@ -128,10 +124,10 @@ export default function DashboardPage() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="活跃租约"
-              value={leaseHealth?.health.activeLease || 0}
+              title="低库存 Campaign"
+              value={stockStats?.summary.lowStockCampaigns || 0}
               prefix={<SyncOutlined />}
-              valueStyle={{ color: '#1677ff' }}
+              valueStyle={{ color: (stockStats?.summary.lowStockCampaigns || 0) > 0 ? '#ff4d4f' : '#1677ff' }}
             />
           </Card>
         </Col>
@@ -159,7 +155,6 @@ export default function DashboardPage() {
               columns={[
                 { title: 'Campaign ID', dataIndex: 'campaignId' },
                 { title: '可用库存', dataIndex: 'available' },
-                { title: '租约中', dataIndex: 'leased' },
               ]}
               locale={{ emptyText: '当前没有库存不足的 Campaign' }}
             />

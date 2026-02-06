@@ -27,26 +27,9 @@ export interface StockStatsResponse {
   summary: StockSummary
 }
 
-export interface LeaseHealth {
-  activeLease: number
-  expiredLeases: number
-  failedLeases: number
-  oldestActiveMinutes: number | null
-}
-
-export interface LeaseHealthResponse {
-  success: boolean
-  health: LeaseHealth
-  thresholds: {
-    leaseTimeoutMinutes: number
-    stockExpiryHours: number
-  }
-}
-
 export type AlertLevel = 'info' | 'warning' | 'critical'
 export type AlertType =
   | 'low_stock'
-  | 'lease_timeout'
   | 'high_failure_rate'
   | 'no_stock_frequent'
   | 'system_health'

@@ -12,7 +12,6 @@
  */
 
 import { replenishAllLowStockWithRetry, type ReplenishFailure } from './stock-producer'
-import { recoverExpiredLeases } from './lease-recovery'
 import { checkAndAlert } from './alerting'
 import { prisma } from './prisma'
 
@@ -232,16 +231,7 @@ export function initializeDefaultJobs(): void {
     },
   })
 
-  // 2. 租约回收任务 - 保持 5 分钟
-  registerJob({
-    name: 'lease_recovery',
-    description: '回收超时未确认的租约',
-    intervalMinutes: 5,
-    enabled: true,
-    handler: recoverExpiredLeases,
-  })
-
-  // 3. 监控告警任务 - 保持 10 分钟
+  // 2. 监控告警任务 - 保持 10 分钟
   registerJob({
     name: 'monitoring_alert',
     description: '检查系统状态并发送告警',

@@ -11,7 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { cleanupExpiredStock } from '@/lib/lease-recovery'
+import { cleanupExpiredStock } from '@/lib/stock-producer'
 
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('authorization')

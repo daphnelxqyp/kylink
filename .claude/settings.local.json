@@ -25,7 +25,10 @@
       "Bash(node -r dotenv/config check-proxy.js:*)",
       "Bash(ls:*)",
       "Bash(node scripts/diagnose-campaign-proxy.js:*)",
-      "Bash(node scripts/diagnose-campaign-proxy-simple.js:*)"
+      "Bash(node scripts/diagnose-campaign-proxy-simple.js:*)",
+      "Bash(bash:*)",
+      "Bash(if not exist \"docs\\\\plans\" mkdir docsplans)",
+      "Bash(npm test)"
     ]
   }
 }

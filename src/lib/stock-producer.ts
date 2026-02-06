@@ -1269,3 +1269,33 @@ export async function getStockStats(userId?: string): Promise<{
   return { campaigns, summary }
 }
 
+/**
+ * 清理过期的库存项
+ *
+ * 将超过 48 小时仍处于 available 状态的库存标记为 expired（软删除），
+ * 防止过旧的 suffix 被分配。
+ *
+ * @returns 清理结果
+ */
+export async function cleanupExpiredStock(): Promise<{ cleaned: number }> {
+  const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000)
+
+  const result = await prisma.suffixStockItem.updateMany({
+    where: {
+      status: 'available',
+      createdAt: { lt: cutoff },
+      deletedAt: null,
+    },
+    data: {
+      status: 'expired',
+      expiredAt: new Date(),
+    },
+  })
+
+  if (result.count > 0) {
+    console.log(`[StockCleanup] Cleaned ${result.count} expired stock items (older than 48h)`)
+  }
+
+  return { cleaned: result.count }
+}
+

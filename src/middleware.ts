@@ -28,7 +28,7 @@ const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
   '/api/v1/admin/users': { windowMs: 60 * 1000, maxRequests: 20 },
   // 批量操作：每分钟 30 次
   '/api/v1/suffix/lease/batch': { windowMs: 60 * 1000, maxRequests: 30 },
-  '/api/v1/suffix/ack/batch': { windowMs: 60 * 1000, maxRequests: 30 },
+  '/api/v1/suffix/report/batch': { windowMs: 60 * 1000, maxRequests: 30 },
 }
 
 // 内存存储（生产环境建议使用 Redis）

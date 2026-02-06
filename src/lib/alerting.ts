@@ -8,20 +8,12 @@
  * 
  * 告警类型：
  * - 低库存告警
- * - 租约超时告警
- * - 失败率过高告警
+ * - 写入失败率过高告警
  * - NO_STOCK 频繁告警
- * 
- * 改进说明（2026-01-20）：
- * - 告警历史持久化到数据库 Alert 表
- * - 支持分页查询告警历史
- * - 支持按用户、类型、级别过滤告警
  */
 
 import prisma from './prisma'
 import { getStockStats } from './stock-producer'
-import { getLeaseHealth } from './lease-recovery'
-import { STOCK_CONFIG } from './utils'
 type AlertType = 'low_stock' | 'lease_timeout' | 'high_failure_rate' | 'no_stock_frequent' | 'system_health' | 'STOCK_REPLENISH_FAILED'
 type AlertLevel = 'info' | 'warning' | 'critical'
 
@@ -62,17 +54,14 @@ interface PrismaAlertRecord {
 
 /** 告警配置 */
 export interface AlertConfig {
-  // 低库存告警阈值
+  /** 低库存告警阈值 */
   lowStockThreshold: number
-  // 租约超时告警阈值（分钟）
-  leaseTimeoutThreshold: number
-  // 失败率告警阈值（百分比）
+  /** 失败率告警阈值（百分比） */
   failureRateThreshold: number
-  // NO_STOCK 频率阈值（24小时内次数）
+  /** NO_STOCK 频率阈值（24小时内次数） */
   noStockFrequencyThreshold: number
-  // 是否启用各类告警
+  /** 是否启用各类告警 */
   enableLowStock: boolean
-  enableLeaseTimeout: boolean
   enableFailureRate: boolean
   enableNoStockFrequent: boolean
 }
@@ -100,12 +89,10 @@ export interface AlertStats {
 // ============================================
 
 const DEFAULT_CONFIG: AlertConfig = {
-  lowStockThreshold: STOCK_CONFIG.LOW_WATERMARK,
-  leaseTimeoutThreshold: STOCK_CONFIG.LEASE_TTL_MINUTES - 5, // 提前 5 分钟告警
-  failureRateThreshold: 10, // 失败率超过 10%
-  noStockFrequencyThreshold: 10, // 24小时内超过 10 次
+  lowStockThreshold: 3,
+  failureRateThreshold: 10,
+  noStockFrequencyThreshold: 10,
   enableLowStock: true,
-  enableLeaseTimeout: true,
   enableFailureRate: true,
   enableNoStockFrequent: true,
 }
@@ -288,47 +275,7 @@ async function checkLowStock(config: AlertConfig): Promise<Alert[]> {
 }
 
 /**
- * 检查租约超时
- */
-async function checkLeaseTimeout(config: AlertConfig): Promise<Alert[]> {
-  const alerts: Alert[] = []
-  
-  if (!config.enableLeaseTimeout) return alerts
-
-  try {
-    const health = await getLeaseHealth()
-
-    // 检查是否有即将超时的租约
-    if (health.oldestActiveMinutes !== null && 
-        health.oldestActiveMinutes >= config.leaseTimeoutThreshold) {
-      
-      const level: AlertLevel = 
-        health.oldestActiveMinutes >= STOCK_CONFIG.LEASE_TTL_MINUTES ? 'critical' : 'warning'
-
-      const alert = await createAlert(
-        'lease_timeout',
-        level,
-        `检测到长时间未确认的租约`,
-        `最旧的活跃租约已持续 ${health.oldestActiveMinutes} 分钟（阈值 ${STOCK_CONFIG.LEASE_TTL_MINUTES} 分钟），共 ${health.activeLease} 个活跃租约`,
-        {
-          activeLeases: health.activeLease,
-          oldestMinutes: health.oldestActiveMinutes,
-          threshold: STOCK_CONFIG.LEASE_TTL_MINUTES,
-        }
-      )
-      
-      alerts.push(alert)
-      await sendNotification(alert)
-    }
-  } catch (error) {
-    console.error('[Alert] checkLeaseTimeout error:', error)
-  }
-
-  return alerts
-}
-
-/**
- * 检查失败率
+ * 检查写入失败率（基于 SuffixWriteLog）
  */
 async function checkFailureRate(config: AlertConfig): Promise<Alert[]> {
   const alerts: Alert[] = []
@@ -336,30 +283,32 @@ async function checkFailureRate(config: AlertConfig): Promise<Alert[]> {
   if (!config.enableFailureRate) return alerts
 
   try {
-    // 统计最近 1 小时的租约成功/失败率
+    // 统计最近 1 小时的写入成功/失败率（基于 SuffixWriteLog）
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
     
-    const recentLeases = await prisma.suffixLease.groupBy({
-      by: ['status'],
+    const recentWrites = await prisma.suffixWriteLog.groupBy({
+      by: ['writeSuccess'],
       where: {
-        leasedAt: { gte: oneHourAgo },
+        reportedAt: { gte: oneHourAgo },
         deletedAt: null,
       },
       _count: true,
     })
 
-    const statusMap = new Map<string, number>()
-    for (const s of recentLeases) {
-      // _count 可能是 number 或 { _all: number } 取决于 Prisma 版本
+    let successCount = 0
+    let failCount = 0
+    for (const s of recentWrites) {
       const count = typeof s._count === 'number' ? s._count : (s._count as { _all: number })._all
-      statusMap.set(s.status, count)
+      if (s.writeSuccess) {
+        successCount = count
+      } else {
+        failCount = count
+      }
     }
-    const consumed: number = statusMap.get('consumed') || 0
-    const failed: number = statusMap.get('failed') || 0
-    const total: number = consumed + failed
+    const total = successCount + failCount
 
     if (total > 0) {
-      const failureRate = (failed / total) * 100
+      const failureRate = (failCount / total) * 100
 
       if (failureRate >= config.failureRateThreshold) {
         const level: AlertLevel = failureRate >= 20 ? 'critical' : 'warning'
@@ -367,11 +316,11 @@ async function checkFailureRate(config: AlertConfig): Promise<Alert[]> {
         const alert = await createAlert(
           'high_failure_rate',
           level,
-          `租约失败率过高: ${failureRate.toFixed(1)}%`,
-          `最近 1 小时内，${total} 个租约中有 ${failed} 个失败（失败率 ${failureRate.toFixed(1)}%，阈值 ${config.failureRateThreshold}%）`,
+          `写入失败率过高: ${failureRate.toFixed(1)}%`,
+          `最近 1 小时内，${total} 次写入中有 ${failCount} 次失败（失败率 ${failureRate.toFixed(1)}%，阈值 ${config.failureRateThreshold}%）`,
           {
-            consumed,
-            failed,
+            success: successCount,
+            failed: failCount,
             total,
             failureRate: failureRate.toFixed(2),
             threshold: config.failureRateThreshold,
@@ -455,17 +404,12 @@ export async function checkAndAlert(
     const lowStockAlerts = await checkLowStock(config)
     allAlerts.push(...lowStockAlerts)
 
-    // 2. 检查租约超时
-    checked.push('lease_timeout')
-    const leaseAlerts = await checkLeaseTimeout(config)
-    allAlerts.push(...leaseAlerts)
-
-    // 3. 检查失败率
+    // 2. 检查失败率
     checked.push('failure_rate')
     const failureAlerts = await checkFailureRate(config)
     allAlerts.push(...failureAlerts)
 
-    // 4. 检查 NO_STOCK 频率
+    // 3. 检查 NO_STOCK 频率
     checked.push('no_stock_frequency')
     const noStockAlerts = await checkNoStockFrequency(config)
     allAlerts.push(...noStockAlerts)

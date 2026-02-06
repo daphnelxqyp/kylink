@@ -40,7 +40,6 @@ model User {
   campaigns      CampaignMeta[]
   affiliateLinks AffiliateLink[]
   suffixStocks   SuffixStockItem[]
-  suffixLeases   SuffixLease[]
   suffixAssignments SuffixAssignment[]
   suffixWriteLogs SuffixWriteLog[]
   clickStates    CampaignClickState[]
@@ -147,7 +146,6 @@ model SuffixStockItem {
   // 虚拟关联
   user                User           @relation(fields: [userId], references: [id])
   sourceAffiliateLink AffiliateLink? @relation(fields: [sourceAffiliateLinkId], references: [id])
-  leases              SuffixLease[]
   assignments         SuffixAssignment[]
 
   @@index([userId])
@@ -170,48 +168,7 @@ enum SuffixStockStatus {
 }
 
 // -----------------------------------------------------
-// 5. SuffixLease - Suffix 租约
-// -----------------------------------------------------
-model SuffixLease {
-  id                      String      @id @default(uuid()) @db.Char(36)
-  userId                  String      @db.Char(36)
-  campaignId              String      @db.VarChar(64)
-  suffixStockItemId       String      @db.Char(36)
-  idempotencyKey          String      @db.VarChar(128)     // campaignId:windowStartEpochSeconds
-  nowClicksAtLeaseTime    Int                              // 租用时的 nowClicks
-  windowStartEpochSeconds BigInt                           // 窗口开始时间戳
-  status                  LeaseStatus @default(leased)
-  leasedAt                DateTime    @default(now()) @db.DateTime(3)
-  ackedAt                 DateTime?   @db.DateTime(3)      // 回执时间
-  applied                 Boolean?                         // 是否成功写入
-  errorMessage            String?     @db.Text             // 失败原因
-  deletedAt               DateTime?   @db.DateTime(3)      // 软删除时间
-
-  // 虚拟关联
-  user            User            @relation(fields: [userId], references: [id])
-  suffixStockItem SuffixStockItem @relation(fields: [suffixStockItemId], references: [id])
-
-  @@unique([userId, idempotencyKey])
-  @@index([userId])
-  @@index([campaignId])
-  @@index([userId, campaignId])
-  @@index([status])
-  @@index([status, leasedAt])                          // 租约回收查询优化
-  @@index([userId, status, leasedAt])                  // 用户租约回收查询优化
-  @@index([campaignId, status])                        // 检查活跃租约优化
-  @@index([suffixStockItemId])
-  @@index([deletedAt])
-}
-
-enum LeaseStatus {
-  leased
-  consumed
-  failed
-  expired
-}
-
-// -----------------------------------------------------
-// 7. SuffixAssignment - Suffix 分配记录（新架构）
+// 5. SuffixAssignment - Suffix 分配记录（新架构）
 // -----------------------------------------------------
 model SuffixAssignment {
   id                      String   @id @default(uuid()) @db.Char(36)
