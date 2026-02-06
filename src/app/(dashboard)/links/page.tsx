@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Col,
   Form,
   Input,
+  InputNumber,
   message,
   Modal,
+  Popconfirm,
+  Progress,
   Row,
   Space,
   Spin,
@@ -29,8 +33,9 @@ import {
   GlobalOutlined,
   LinkOutlined,
   LoadingOutlined,
-  ReloadOutlined,
   SafetyCertificateOutlined,
+  ThunderboltOutlined,
+  StopOutlined,
 } from '@ant-design/icons'
 import {
   getJsonPublic,
@@ -38,6 +43,7 @@ import {
   postJsonPublic,
   putJsonPublic,
   patchJsonPublic,
+  deleteJsonPublic,
 } from '@/lib/api-client'
 import type {
   CampaignItem,
@@ -561,6 +567,277 @@ function LinkEditModal({ visible, campaign, onClose, onSuccess }: LinkEditModalP
   )
 }
 
+// ================= 刷点击任务类型 =================
+
+interface ClickTaskInfo {
+  id: string
+  campaignId: string
+  targetClicks: number
+  completedClicks: number
+  failedClicks: number
+  status: 'running' | 'completed' | 'cancelled' | 'failed'
+  createdAt: string
+}
+
+interface ClickTaskListResponse {
+  success: boolean
+  tasks: ClickTaskInfo[]
+}
+
+// ================= 刷点击弹窗 =================
+
+interface ClickModalProps {
+  visible: boolean
+  campaign: CampaignItem | null
+  onClose: () => void
+  onSuccess: () => void
+}
+
+function ClickTaskModal({ visible, campaign, onClose, onSuccess }: ClickModalProps) {
+  const [clickCount, setClickCount] = useState<number>(10)
+  const [creating, setCreating] = useState(false)
+  const [tasks, setTasks] = useState<ClickTaskInfo[]>([])
+  const [loadingTasks, setLoadingTasks] = useState(false)
+
+  /** 加载该 campaign 的点击任务 */
+  const loadTasks = useCallback(async () => {
+    if (!campaign) return
+    setLoadingTasks(true)
+    try {
+      const res = await getJsonPublic<ClickTaskListResponse>('/api/v1/admin/click-tasks')
+      // 只显示当前 campaign 的任务
+      setTasks(
+        res.tasks.filter((t) => t.campaignId === campaign.campaignId)
+      )
+    } catch {
+      // 忽略
+    } finally {
+      setLoadingTasks(false)
+    }
+  }, [campaign])
+
+  useEffect(() => {
+    if (visible && campaign) {
+      loadTasks()
+    }
+  }, [visible, campaign, loadTasks])
+
+  /** 创建刷点击任务 */
+  const handleCreate = async () => {
+    if (!campaign || !campaign.affiliateLinkId) return
+    setCreating(true)
+    try {
+      await postJsonPublic('/api/v1/admin/click-tasks', {
+        campaignId: campaign.campaignId,
+        affiliateLinkId: campaign.affiliateLinkId,
+        targetClicks: clickCount,
+      })
+      message.success(`已创建 ${clickCount} 次点击任务`)
+      await loadTasks()
+      onSuccess()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '创建失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  /** 取消任务 */
+  const handleCancel = async (taskId: string) => {
+    try {
+      await deleteJsonPublic(`/api/v1/admin/click-tasks/${taskId}`)
+      message.success('任务已取消')
+      await loadTasks()
+      onSuccess()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '取消失败')
+    }
+  }
+
+  /** 判断是否有运行中的任务 */
+  const hasRunningTask = tasks.some((t) => t.status === 'running')
+
+  return (
+    <Modal
+      title="刷点击"
+      open={visible}
+      onCancel={onClose}
+      footer={null}
+      destroyOnClose
+      width={600}
+    >
+      {campaign && (
+        <>
+          {/* Campaign 信息 */}
+          <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 8 }}>
+            <Row gutter={[16, 8]}>
+              <Col span={24}>
+                <Text type="secondary">广告系列：</Text>
+                <Text strong>{campaign.campaignName || campaign.campaignId}</Text>
+              </Col>
+              <Col span={24}>
+                <Text type="secondary">联盟链接：</Text>
+                {campaign.affiliateLinkUrl ? (
+                  <Text code style={{ fontSize: 12 }}>
+                    {truncateUrl(campaign.affiliateLinkUrl, 50)}
+                  </Text>
+                ) : (
+                  <Text type="danger">未配置</Text>
+                )}
+              </Col>
+            </Row>
+          </div>
+
+          {/* 新建任务 */}
+          {!campaign.affiliateLinkUrl ? (
+            <Alert
+              type="warning"
+              message="请先配置联盟链接"
+              description="需要先为该广告系列配置联盟链接才能创建刷点击任务"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          ) : (
+            <Card size="small" style={{ marginBottom: 16 }}>
+              <Row gutter={16} align="middle">
+                <Col flex="auto">
+                  <Space>
+                    <Text>目标点击数：</Text>
+                    <InputNumber
+                      min={1}
+                      max={1000}
+                      value={clickCount}
+                      onChange={(v) => setClickCount(v || 10)}
+                      style={{ width: 120 }}
+                    />
+                    <Text type="secondary">（1-1000 次）</Text>
+                  </Space>
+                </Col>
+                <Col>
+                  <Button
+                    type="primary"
+                    icon={<ThunderboltOutlined />}
+                    onClick={handleCreate}
+                    loading={creating}
+                    disabled={hasRunningTask || !campaign.affiliateLinkEnabled}
+                  >
+                    开始刷
+                  </Button>
+                </Col>
+              </Row>
+              {hasRunningTask && (
+                <Alert
+                  type="info"
+                  message="当前已有运行中的任务，请等待完成或取消后再创建"
+                  showIcon
+                  style={{ marginTop: 12 }}
+                />
+              )}
+              {!campaign.affiliateLinkEnabled && campaign.affiliateLinkUrl && (
+                <Alert
+                  type="warning"
+                  message="联盟链接已禁用，请先启用"
+                  showIcon
+                  style={{ marginTop: 12 }}
+                />
+              )}
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  点击将按人类作息曲线分布在当日剩余时间内完成，使用代理 IP 模拟真实访问
+                </Text>
+              </div>
+            </Card>
+          )}
+
+          {/* 任务列表 */}
+          <Divider style={{ margin: '12px 0' }}>任务记录</Divider>
+          <Spin spinning={loadingTasks}>
+            {tasks.length === 0 ? (
+              <Text type="secondary">暂无任务记录</Text>
+            ) : (
+              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                {tasks.map((task) => {
+                  const total = task.targetClicks
+                  const done = task.completedClicks + task.failedClicks
+                  const percent = total > 0 ? Math.round((done / total) * 100) : 0
+
+                  let statusTag: React.ReactNode
+                  switch (task.status) {
+                    case 'running':
+                      statusTag = <Badge status="processing" text="进行中" />
+                      break
+                    case 'completed':
+                      statusTag = <Badge status="success" text="已完成" />
+                      break
+                    case 'cancelled':
+                      statusTag = <Badge status="default" text="已取消" />
+                      break
+                    case 'failed':
+                      statusTag = <Badge status="error" text="失败" />
+                      break
+                  }
+
+                  return (
+                    <Card
+                      key={task.id}
+                      size="small"
+                      style={{ marginBottom: 8 }}
+                    >
+                      <Row gutter={8} align="middle">
+                        <Col flex="auto">
+                          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                            <Space>
+                              {statusTag}
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {new Date(task.createdAt).toLocaleString('zh-CN')}
+                              </Text>
+                            </Space>
+                            <Progress
+                              percent={percent}
+                              size="small"
+                              status={
+                                task.status === 'running'
+                                  ? 'active'
+                                  : task.status === 'failed'
+                                    ? 'exception'
+                                    : undefined
+                              }
+                              format={() =>
+                                `${task.completedClicks}/${total} 成功${task.failedClicks > 0 ? `, ${task.failedClicks} 失败` : ''}`
+                              }
+                            />
+                          </Space>
+                        </Col>
+                        {task.status === 'running' && (
+                          <Col>
+                            <Popconfirm
+                              title="确定取消任务？"
+                              description="已执行的点击不会撤回"
+                              onConfirm={() => handleCancel(task.id)}
+                            >
+                              <Button
+                                size="small"
+                                danger
+                                icon={<StopOutlined />}
+                              >
+                                取消
+                              </Button>
+                            </Popconfirm>
+                          </Col>
+                        )}
+                      </Row>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </Spin>
+        </>
+      )}
+    </Modal>
+  )
+}
+
 // ================= 导入结果类型 =================
 interface SheetImportResult {
   url: string
@@ -585,6 +862,7 @@ export default function LinksPage() {
   const [importing, setImporting] = useState(false)
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([])
   const [editModalVisible, setEditModalVisible] = useState(false)
+  const [clickModalVisible, setClickModalVisible] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignItem | null>(null)
 
   // 从数据库加载广告系列列表
@@ -647,6 +925,11 @@ export default function LinksPage() {
     setEditModalVisible(true)
   }
 
+  const handleClickTask = (campaign: CampaignItem) => {
+    setSelectedCampaign(campaign)
+    setClickModalVisible(true)
+  }
+
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
       {/* 页面标题 */}
@@ -661,23 +944,14 @@ export default function LinksPage() {
             </Text>
           </Col>
           <Col>
-            <Space>
-              <Button 
-                type="primary" 
-                icon={<CloudDownloadOutlined />} 
-                onClick={importFromSheets} 
-                loading={importing}
-              >
-                刷新广告系列
-              </Button>
-              <Button 
-                icon={<ReloadOutlined />} 
-                onClick={loadCampaigns} 
-                loading={loading}
-              >
-                刷新列表
-              </Button>
-            </Space>
+            <Button 
+              type="primary" 
+              icon={<CloudDownloadOutlined />} 
+              onClick={importFromSheets} 
+              loading={importing}
+            >
+              刷新广告系列
+            </Button>
           </Col>
         </Row>
       </Card>
@@ -691,6 +965,7 @@ export default function LinksPage() {
           loading={loading}
           dataSource={campaigns}
           pagination={{
+            defaultPageSize: 50,
             showSizeChanger: true,
             showQuickJumper: true,
             showTotal: (total) => `共 ${total} 条`,
@@ -794,17 +1069,28 @@ export default function LinksPage() {
             {
               title: '操作',
               key: 'action',
-              width: 100,
+              width: 160,
               align: 'center',
               render: (_, record) => (
-                <Button
-                  type="link"
-                  icon={<EditOutlined />}
-                  onClick={() => handleEdit(record)}
-                  style={{ padding: 0 }}
-                >
-                  编辑
-                </Button>
+                <Space size={4}>
+                  <Button
+                    type="link"
+                    icon={<EditOutlined />}
+                    onClick={() => handleEdit(record)}
+                    style={{ padding: 0 }}
+                  >
+                    编辑
+                  </Button>
+                  <Button
+                    type="link"
+                    icon={<ThunderboltOutlined />}
+                    onClick={() => handleClickTask(record)}
+                    style={{ padding: 0 }}
+                    disabled={!record.affiliateLinkUrl}
+                  >
+                    刷点击
+                  </Button>
+                </Space>
               ),
             },
           ]}
@@ -816,6 +1102,14 @@ export default function LinksPage() {
         visible={editModalVisible}
         campaign={selectedCampaign}
         onClose={() => setEditModalVisible(false)}
+        onSuccess={loadCampaigns}
+      />
+
+      {/* 刷点击任务弹窗 */}
+      <ClickTaskModal
+        visible={clickModalVisible}
+        campaign={selectedCampaign}
+        onClose={() => setClickModalVisible(false)}
         onSuccess={loadCampaigns}
       />
     </Space>

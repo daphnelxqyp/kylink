@@ -13,6 +13,7 @@
 
 import { replenishAllLowStockWithRetry, type ReplenishFailure } from './stock-producer'
 import { checkAndAlert } from './alerting'
+import { executeClickTasks } from './click-task-service'
 import { prisma } from './prisma'
 
 // 任务执行结果
@@ -238,6 +239,15 @@ export function initializeDefaultJobs(): void {
     intervalMinutes: 10,
     enabled: true,
     handler: checkAndAlert,
+  })
+
+  // 3. 刷点击任务执行 - 每 1 分钟
+  registerJob({
+    name: 'click_task_execute',
+    description: '执行到期的刷点击任务',
+    intervalMinutes: 1,
+    enabled: true,
+    handler: executeClickTasks,
   })
 
   console.log('[Cron] Default jobs initialized')

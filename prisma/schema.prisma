@@ -49,6 +49,7 @@ model User {
   proxyProviderAssignments ProxyProviderUser[] @relation("UserProxyProviders")  // 多对多分配关联
   affiliateNetworks  AffiliateNetwork[]   // 联盟网络
   affiliateMerchants AffiliateMerchant[]  // 联盟商家
+  clickTasks         ClickTask[]          // 刷点击任务
 
   @@index([apiKeyPrefix])
   @@index([status])
@@ -394,7 +395,67 @@ enum AlertLevel {
 }
 
 // -----------------------------------------------------
-// 13. AffiliateMerchant - 联盟商家（tracking_url 数据源）
+// 13. ClickTask - 刷点击任务
+// -----------------------------------------------------
+model ClickTask {
+  id               String          @id @default(uuid()) @db.Char(36)
+  userId           String          @db.Char(36)
+  campaignId       String          @db.VarChar(64)
+  affiliateLinkId  String          @db.Char(36)
+  affiliateUrl     String          @db.Text               // 联盟链接 URL
+  country          String?         @db.VarChar(10)        // 国家代码
+  targetClicks     Int                                    // 目标点击数
+  completedClicks  Int             @default(0)            // 已完成点击数
+  failedClicks     Int             @default(0)            // 失败点击数
+  status           ClickTaskStatus @default(running)
+  createdAt        DateTime        @default(now()) @db.DateTime(3)
+  updatedAt        DateTime        @updatedAt @db.DateTime(3)
+
+  user  User            @relation(fields: [userId], references: [id])
+  items ClickTaskItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+}
+
+enum ClickTaskStatus {
+  running
+  completed
+  cancelled
+  failed
+}
+
+// -----------------------------------------------------
+// 14. ClickTaskItem - 刷点击任务的单次计划
+// -----------------------------------------------------
+model ClickTaskItem {
+  id          String              @id @default(uuid()) @db.Char(36)
+  taskId      String              @db.Char(36)
+  scheduledAt DateTime            @db.DateTime(3)        // 计划执行时间
+  status      ClickTaskItemStatus @default(pending)
+  exitIp      String?             @db.VarChar(45)        // 代理出口 IP
+  error       String?             @db.Text               // 错误信息
+  executedAt  DateTime?           @db.DateTime(3)        // 实际执行时间
+  duration    Int?                                       // 执行耗时（毫秒）
+
+  task ClickTask @relation(fields: [taskId], references: [id])
+
+  @@index([taskId])
+  @@index([status, scheduledAt])
+  @@index([taskId, status])
+}
+
+enum ClickTaskItemStatus {
+  pending
+  executing
+  success
+  failed
+  cancelled
+}
+
+// -----------------------------------------------------
+// 15. AffiliateMerchant - 联盟商家（tracking_url 数据源）
 // -----------------------------------------------------
 model AffiliateMerchant {
   id             String    @id @default(uuid()) @db.Char(36)

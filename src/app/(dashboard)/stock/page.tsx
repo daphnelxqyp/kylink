@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Button, Card, Checkbox, Col, Row, Space, Statistic, Table, Tag, Typography, message, Progress, Alert } from 'antd'
-import { DatabaseOutlined, SyncOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
+import { DatabaseOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons'
 import { getJson, postJson, getStoredApiKey } from '@/lib/api-client'
 import type { StockCampaignStat, StockStatsResponse } from '@/types/dashboard'
 import NoApiKeyAlert from '@/components/no-api-key-alert'
@@ -317,9 +317,6 @@ export default function StockPage() {
           </Col>
           <Col>
             <Space>
-              <Button icon={<SyncOutlined />} onClick={loadStats} loading={loading} disabled={replenishing}>
-                刷新
-              </Button>
               {replenishing ? (
                 <Button danger onClick={handleCancelReplenish}>
                   取消补货
@@ -422,7 +419,7 @@ export default function StockPage() {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic title="租约中库存" value={summary?.totalLeased || 0} />
+            <Statistic title="已消耗库存" value={summary?.totalConsumed || 0} />
           </Card>
         </Col>
       </Row>
@@ -437,6 +434,12 @@ export default function StockPage() {
           rowKey={record => `${record.userId}-${record.campaignId}`}
           loading={loading}
           dataSource={campaigns}
+          pagination={{
+            defaultPageSize: 50,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total) => `共 ${total} 条`,
+          }}
           columns={[
             { 
               title: '广告系列名称', 
@@ -460,7 +463,6 @@ export default function StockPage() {
               width: 90,
               render: (value: number) => (value === 0 ? <Tag color="red">0</Tag> : value),
             },
-            { title: '租约中', dataIndex: 'leased', width: 80 },
             { title: '已消耗', dataIndex: 'consumed', width: 80 },
             { title: '总计', dataIndex: 'total', width: 70 },
             {

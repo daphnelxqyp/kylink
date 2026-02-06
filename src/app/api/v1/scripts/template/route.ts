@@ -8,7 +8,6 @@ import { join } from 'path'
 
 /** 脚本名称 → 文件路径映射 */
 const SCRIPT_FILES: Record<string, string> = {
-  sync: 'campaign_sync_to_sheet.js',
   swap: 'campaignto1.js',
 }
 
@@ -20,7 +19,7 @@ export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get('name')
   if (!name || !SCRIPT_FILES[name]) {
     return NextResponse.json(
-      { success: false, error: '无效的脚本名称，可选值: sync, swap' },
+      { success: false, error: '无效的脚本名称，可选值: swap' },
       { status: 400 },
     )
   }

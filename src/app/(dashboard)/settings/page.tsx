@@ -155,10 +155,10 @@ export default function SettingsPage() {
   /**
    * 通用脚本复制逻辑：获取模板 → 替换配置 → 复制到剪贴板
    * @param index - Spreadsheet 配置的索引
-   * @param scriptName - 脚本模板名称 ('sync' | 'swap')
+   * @param scriptName - 脚本模板名称 ('swap')
    * @param label - 用于提示信息的脚本显示名
    */
-  const handleCopyScript = async (index: number, scriptName: 'sync' | 'swap', label: string) => {
+  const handleCopyScript = async (index: number, scriptName: 'swap', label: string) => {
     const apiKey = form.getFieldValue('apiKey')
     const configs: SpreadsheetConfig[] = form.getFieldValue('spreadsheetConfigs') || []
     const config = configs[index]
@@ -204,9 +204,6 @@ export default function SettingsPage() {
       message.error(err instanceof Error ? err.message : '复制失败，请重试')
     }
   }
-
-  /** 复制同步脚本（campaign_sync_to_sheet.js） */
-  const handleCopySyncScript = (index: number) => handleCopyScript(index, 'sync', '同步脚本')
 
   /** 复制换链脚本（campaignto1.js） */
   const handleCopySwapScript = (index: number) => handleCopyScript(index, 'swap', '换链脚本')
@@ -399,10 +396,7 @@ export default function SettingsPage() {
                     >
                       <Input placeholder="用于脚本写入的 Google 表格 URL" />
                     </Form.Item>
-                    <Space size={6}>
-                      <Button icon={<CopyOutlined />} onClick={() => handleCopySyncScript(index)}>复制同步脚本</Button>
-                      <Button icon={<CopyOutlined />} onClick={() => handleCopySwapScript(index)}>复制换链脚本</Button>
-                    </Space>
+                    <Button icon={<CopyOutlined />} onClick={() => handleCopySwapScript(index)}>复制换链脚本</Button>
                     <Button
                       icon={<MinusOutlined />}
                       onClick={() => remove(field.name)}
