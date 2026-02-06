@@ -1252,11 +1252,14 @@ export async function getStockStats(userId?: string): Promise<{
   // 2. 动态水位需要为每个 campaign 单独查询过去 24h 消费记录（N+1 查询问题）
   // 3. 实际补货逻辑（checkStockLevel/replenishCampaign）已使用动态水位
   // 4. Dashboard 显示的 needsReplenish 仅作为参考指标，不影响实际补货决策
-  const campaigns = Array.from(campaignMap.values()).map(c => ({
-    ...c,
-    total: c.available + c.leased + c.consumed,
-    needsReplenish: c.available < STOCK_CONFIG.LOW_WATERMARK,
-  }))
+  const campaigns = Array.from(campaignMap.values())
+    .map(c => ({
+      ...c,
+      total: c.available + c.leased + c.consumed,
+      needsReplenish: c.available < STOCK_CONFIG.LOW_WATERMARK,
+    }))
+    // 与链接管理列表排序一致：campaignName 降序
+    .sort((a, b) => (b.campaignName || '').localeCompare(a.campaignName || ''))
 
   const summary = {
     totalCampaigns: campaigns.length,

@@ -456,9 +456,10 @@ export default function SettingsPage() {
                           loading={isSyncingThis}
                           icon={progress?.stage === 'done' ? <CheckCircleOutlined /> : <SyncOutlined spin={isSyncingThis} />}
                           type={progress?.stage === 'done' ? 'default' : 'primary'}
-                          disabled={isSyncing && !isSyncingThis}
+                          disabled
+                          title="功能暂未启用"
                         >
-                          {isSyncingThis ? '同步中...' : (progress?.stage === 'done' ? '已完成' : '更新联盟链接')}
+                          更新联盟链接
                         </Button>
                         <Button
                           icon={<MinusOutlined />}

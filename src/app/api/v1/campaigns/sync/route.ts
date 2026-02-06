@@ -18,6 +18,8 @@ import {
   successResponse, 
   errorResponse,
 } from '@/lib/utils'
+import { normalizeCountryCode } from '@/lib/country-codes'
+import { extractRootDomain } from '@/lib/google-sheet-reader'
 
 // Campaign 数据类型
 interface CampaignData {
@@ -130,6 +132,10 @@ export async function POST(request: NextRequest) {
 
       const existing = existingMap.get(campaign.campaignId)
 
+      // 标准化国家代码和域名（与 campaigns/import 保持一致）
+      const normalizedCountry = normalizeCountryCode(campaign.country) || campaign.country
+      const normalizedDomain = extractRootDomain(campaign.finalUrl) || campaign.finalUrl
+
       if (!existing) {
         // 新建
         await prisma.campaignMeta.create({
@@ -137,8 +143,8 @@ export async function POST(request: NextRequest) {
             userId,
             campaignId: campaign.campaignId,
             campaignName: campaign.campaignName,
-            country: campaign.country,
-            finalUrl: campaign.finalUrl,
+            country: normalizedCountry,
+            finalUrl: normalizedDomain,
             cid: campaign.cid,
             mccId: campaign.mccId,
             status: 'active',
@@ -147,17 +153,17 @@ export async function POST(request: NextRequest) {
         })
         created++
       } else {
-        // 检查是否有变化
+        // 检查是否有变化（使用标准化后的值比较）
         const hasChange =
           existing.campaignName !== campaign.campaignName ||
-          existing.country !== campaign.country ||
-          existing.finalUrl !== campaign.finalUrl ||
+          existing.country !== normalizedCountry ||
+          existing.finalUrl !== normalizedDomain ||
           existing.cid !== campaign.cid ||
           existing.mccId !== campaign.mccId
 
         if (hasChange) {
           // 检查 finalUrl 变化，需要告警
-          if (existing.finalUrl !== campaign.finalUrl) {
+          if (existing.finalUrl !== normalizedDomain) {
             warnings.push({
               campaignId: campaign.campaignId,
               message: 'finalUrl 已变化，请检查联盟链接配置',
@@ -169,8 +175,8 @@ export async function POST(request: NextRequest) {
             where: { id: existing.id },
             data: {
               campaignName: campaign.campaignName,
-              country: campaign.country,
-              finalUrl: campaign.finalUrl,
+              country: normalizedCountry,
+              finalUrl: normalizedDomain,
               cid: campaign.cid,
               mccId: campaign.mccId,
               status: 'active',

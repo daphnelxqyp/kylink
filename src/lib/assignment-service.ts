@@ -10,6 +10,8 @@
 
 import prisma from './prisma'
 import { triggerReplenishAsync } from './stock-producer'
+import { normalizeCountryCode } from './country-codes'
+import { extractRootDomain } from '@/lib/google-sheet-reader'
 
 // ============================================
 // 并发重试配置
@@ -227,14 +229,17 @@ async function processSingleAssignmentInternal(
 
     if (!campaignMeta) {
       if (meta) {
+        // 标准化国家代码和域名（与 campaigns/import 保持一致）
+        const normalizedCountry = normalizeCountryCode(meta.country) || meta.country
+        const normalizedDomain = extractRootDomain(meta.finalUrl) || meta.finalUrl
         // 惰性创建
         campaignMeta = await prisma.campaignMeta.create({
           data: {
             userId,
             campaignId,
             campaignName: meta.campaignName,
-            country: meta.country,
-            finalUrl: meta.finalUrl,
+            country: normalizedCountry,
+            finalUrl: normalizedDomain,
             cid: meta.cid,
             mccId: meta.mccId,
             status: 'active',
@@ -249,11 +254,14 @@ async function processSingleAssignmentInternal(
         }
       }
     } else if (meta) {
-      // 检查是否需要更新
+      // 标准化国家代码和域名（与 campaigns/import 保持一致）
+      const normalizedCountry = normalizeCountryCode(meta.country) || meta.country
+      const normalizedDomain = extractRootDomain(meta.finalUrl) || meta.finalUrl
+      // 检查是否需要更新（使用标准化后的值比较）
       const needsUpdate =
         campaignMeta.campaignName !== meta.campaignName ||
-        campaignMeta.country !== meta.country ||
-        campaignMeta.finalUrl !== meta.finalUrl ||
+        campaignMeta.country !== normalizedCountry ||
+        campaignMeta.finalUrl !== normalizedDomain ||
         campaignMeta.cid !== meta.cid ||
         campaignMeta.mccId !== meta.mccId
 
@@ -262,8 +270,8 @@ async function processSingleAssignmentInternal(
           where: { id: campaignMeta.id },
           data: {
             campaignName: meta.campaignName,
-            country: meta.country,
-            finalUrl: meta.finalUrl,
+            country: normalizedCountry,
+            finalUrl: normalizedDomain,
             cid: meta.cid,
             mccId: meta.mccId,
             lastSyncedAt: new Date(),
