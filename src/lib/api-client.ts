@@ -1,14 +1,21 @@
 /**
  * 前端 API 客户端（浏览器端）
  * 统一处理鉴权头、错误解析与本地配置存储
+ *
+ * 多用户隔离：localStorage 键名按用户 email 隔离，
+ * 不同用户登录同一浏览器不会互相读到对方的配置。
  */
 
+/** localStorage 基础键名（实际存储时会附加 @userEmail 后缀） */
 export const STORAGE_KEYS = {
   API_KEY: 'kyads_api_key',
   SPREADSHEET_ID: 'kyads_spreadsheet_id',
   SPREADSHEET_CONFIGS: 'kyads_spreadsheet_configs',
   AFFILIATE_API_CONFIGS: 'kyads_affiliate_api_configs',
 } as const
+
+/** 当前登录用户标记的 localStorage 键名（不加用户后缀） */
+const CURRENT_USER_KEY = 'kyads_current_user'
 
 /**
  * Spreadsheet 配置项类型
@@ -36,26 +43,100 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined'
 }
 
+// ─── 多用户隔离 ────────────────────────────────────────────
+
+/**
+ * 获取当前登录用户（email）
+ */
+export function getCurrentUser(): string | null {
+  if (!isBrowser()) return null
+  return window.localStorage.getItem(CURRENT_USER_KEY)
+}
+
+/**
+ * 设置当前登录用户。
+ * 首次调用时会自动将旧的未隔离数据迁移到该用户名下。
+ *
+ * @param email - 当前登录用户的 email
+ */
+export function setCurrentUser(email: string): void {
+  if (!isBrowser()) return
+  const prev = window.localStorage.getItem(CURRENT_USER_KEY)
+  if (prev === email) return // 无变化
+
+  // 首次迁移：旧数据（未加用户后缀）迁移到第一个登录用户名下
+  if (!prev) {
+    migrateOldStorageKeys(email)
+  }
+
+  window.localStorage.setItem(CURRENT_USER_KEY, email)
+  notifyConfigUpdated()
+}
+
+/**
+ * 清除当前用户标记（一般不需要，登出后下次登录会自动覆盖）
+ */
+export function clearCurrentUser(): void {
+  if (!isBrowser()) return
+  window.localStorage.removeItem(CURRENT_USER_KEY)
+}
+
+/**
+ * 获取用户隔离后的 localStorage 键名
+ * 格式：baseKey@userEmail（如 kyads_api_key@xc01@kyads.net）
+ */
+function getUserScopedKey(baseKey: string): string {
+  const user = getCurrentUser()
+  return user ? `${baseKey}@${user}` : baseKey
+}
+
+/**
+ * 将旧的未隔离 localStorage 数据迁移到指定用户名下。
+ * 仅在首次设置 CURRENT_USER_KEY 时执行一次。
+ */
+function migrateOldStorageKeys(email: string): void {
+  const keysToMigrate = [
+    STORAGE_KEYS.API_KEY,
+    STORAGE_KEYS.SPREADSHEET_ID,
+    STORAGE_KEYS.SPREADSHEET_CONFIGS,
+    STORAGE_KEYS.AFFILIATE_API_CONFIGS,
+  ]
+  for (const key of keysToMigrate) {
+    const value = window.localStorage.getItem(key)
+    if (value !== null) {
+      const scopedKey = `${key}@${email}`
+      // 只在目标键不存在时迁移，避免覆盖已有数据
+      if (window.localStorage.getItem(scopedKey) === null) {
+        window.localStorage.setItem(scopedKey, value)
+      }
+      // 删除旧键
+      window.localStorage.removeItem(key)
+    }
+  }
+}
+
+// ─── API Key 存储 ──────────────────────────────────────────
+
 export function getStoredApiKey(): string | null {
   if (!isBrowser()) return null
-  return window.localStorage.getItem(STORAGE_KEYS.API_KEY)
+  return window.localStorage.getItem(getUserScopedKey(STORAGE_KEYS.API_KEY))
 }
 
 export function setStoredApiKey(value: string): void {
   if (!isBrowser()) return
-  window.localStorage.setItem(STORAGE_KEYS.API_KEY, value)
+  window.localStorage.setItem(getUserScopedKey(STORAGE_KEYS.API_KEY), value)
   notifyConfigUpdated()
 }
 
 export function clearStoredApiKey(): void {
   if (!isBrowser()) return
-  window.localStorage.removeItem(STORAGE_KEYS.API_KEY)
+  window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.API_KEY))
   notifyConfigUpdated()
 }
 
 export function getStoredSpreadsheetIds(): string[] {
   if (!isBrowser()) return []
-  const stored = window.localStorage.getItem(STORAGE_KEYS.SPREADSHEET_ID)
+  const stored = window.localStorage.getItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_ID))
   if (!stored) return []
   try {
     const parsed = JSON.parse(stored)
@@ -75,17 +156,17 @@ export function setStoredSpreadsheetIds(values: string[]): void {
   if (!isBrowser()) return
   const normalized = values.map(value => value.trim()).filter(Boolean)
   if (!normalized.length) {
-    window.localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_ID)
+    window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_ID))
     notifyConfigUpdated()
     return
   }
-  window.localStorage.setItem(STORAGE_KEYS.SPREADSHEET_ID, JSON.stringify(normalized))
+  window.localStorage.setItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_ID), JSON.stringify(normalized))
   notifyConfigUpdated()
 }
 
 export function clearStoredSpreadsheetIds(): void {
   if (!isBrowser()) return
-  window.localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_ID)
+  window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_ID))
   notifyConfigUpdated()
 }
 
@@ -94,7 +175,7 @@ export function clearStoredSpreadsheetIds(): void {
  */
 export function getStoredSpreadsheetConfigs(): SpreadsheetConfig[] {
   if (!isBrowser()) return []
-  const stored = window.localStorage.getItem(STORAGE_KEYS.SPREADSHEET_CONFIGS)
+  const stored = window.localStorage.getItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_CONFIGS))
   if (!stored) {
     // 兼容旧数据：尝试从旧的 spreadsheetIds 迁移
     const oldIds = getStoredSpreadsheetIds()
@@ -129,16 +210,15 @@ export function setStoredSpreadsheetConfigs(configs: SpreadsheetConfig[]): void 
     .map(c => ({ mccName: (c.mccName || '').trim(), url: (c.url || '').trim() }))
     .filter(c => c.url)
   if (!normalized.length) {
-    window.localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_CONFIGS)
-    // 同时清理旧的存储 key
-    window.localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_ID)
+    window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_CONFIGS))
+    window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_ID))
     notifyConfigUpdated()
     return
   }
-  window.localStorage.setItem(STORAGE_KEYS.SPREADSHEET_CONFIGS, JSON.stringify(normalized))
+  window.localStorage.setItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_CONFIGS), JSON.stringify(normalized))
   // 同步更新旧的 spreadsheetIds（向后兼容）
   const urls = normalized.map(c => c.url)
-  window.localStorage.setItem(STORAGE_KEYS.SPREADSHEET_ID, JSON.stringify(urls))
+  window.localStorage.setItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_ID), JSON.stringify(urls))
   notifyConfigUpdated()
 }
 
@@ -147,8 +227,8 @@ export function setStoredSpreadsheetConfigs(configs: SpreadsheetConfig[]): void 
  */
 export function clearStoredSpreadsheetConfigs(): void {
   if (!isBrowser()) return
-  window.localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_CONFIGS)
-  window.localStorage.removeItem(STORAGE_KEYS.SPREADSHEET_ID)
+  window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_CONFIGS))
+  window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.SPREADSHEET_ID))
   notifyConfigUpdated()
 }
 
@@ -157,7 +237,7 @@ export function clearStoredSpreadsheetConfigs(): void {
  */
 export function getStoredAffiliateApiConfigs(): AffiliateApiConfig[] {
   if (!isBrowser()) return []
-  const stored = window.localStorage.getItem(STORAGE_KEYS.AFFILIATE_API_CONFIGS)
+  const stored = window.localStorage.getItem(getUserScopedKey(STORAGE_KEYS.AFFILIATE_API_CONFIGS))
   if (!stored) return []
   try {
     const parsed = JSON.parse(stored)
@@ -192,11 +272,11 @@ export function setStoredAffiliateApiConfigs(configs: AffiliateApiConfig[]): voi
   })
   const normalized = Array.from(configsMap.values())
   if (!normalized.length) {
-    window.localStorage.removeItem(STORAGE_KEYS.AFFILIATE_API_CONFIGS)
+    window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.AFFILIATE_API_CONFIGS))
     notifyConfigUpdated()
     return
   }
-  window.localStorage.setItem(STORAGE_KEYS.AFFILIATE_API_CONFIGS, JSON.stringify(normalized))
+  window.localStorage.setItem(getUserScopedKey(STORAGE_KEYS.AFFILIATE_API_CONFIGS), JSON.stringify(normalized))
   notifyConfigUpdated()
 }
 
@@ -205,7 +285,7 @@ export function setStoredAffiliateApiConfigs(configs: AffiliateApiConfig[]): voi
  */
 export function clearStoredAffiliateApiConfigs(): void {
   if (!isBrowser()) return
-  window.localStorage.removeItem(STORAGE_KEYS.AFFILIATE_API_CONFIGS)
+  window.localStorage.removeItem(getUserScopedKey(STORAGE_KEYS.AFFILIATE_API_CONFIGS))
   notifyConfigUpdated()
 }
 

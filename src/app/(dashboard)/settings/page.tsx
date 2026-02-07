@@ -5,6 +5,7 @@ import { Alert, Button, Card, Form, Input, Progress, Space, Typography, message 
 import { CopyOutlined, MinusOutlined, PlusOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import {
   clearStoredApiKey,
+  CONFIG_UPDATED_EVENT,
   getJson,
   getStoredApiKey,
   isValidApiKey,
@@ -47,17 +48,26 @@ export default function SettingsPage() {
   const isSyncing = Object.values(affiliateSyncStates).some(state => state.syncing)
 
   useEffect(() => {
-    const apiKey = getStoredApiKey() || ''
-    const spreadsheetConfigs = getStoredSpreadsheetConfigs()
-    const affiliateApiConfigs = getStoredAffiliateApiConfigs()
-    // 表单使用对象数组
-    const sheetConfigs = spreadsheetConfigs.length ? spreadsheetConfigs : [{ mccName: '', url: '' }]
-    const affConfigs = affiliateApiConfigs.length ? affiliateApiConfigs : [{ name: '', apiKey: '' }]
-    form.setFieldsValue({
-      apiKey,
-      spreadsheetConfigs: sheetConfigs,
-      affiliateApiConfigs: affConfigs,
-    })
+    /** 从 localStorage 加载当前用户的配置到表单 */
+    const loadSettings = () => {
+      const apiKey = getStoredApiKey() || ''
+      const spreadsheetConfigs = getStoredSpreadsheetConfigs()
+      const affiliateApiConfigs = getStoredAffiliateApiConfigs()
+      // 表单使用对象数组
+      const sheetConfigs = spreadsheetConfigs.length ? spreadsheetConfigs : [{ mccName: '', url: '' }]
+      const affConfigs = affiliateApiConfigs.length ? affiliateApiConfigs : [{ name: '', apiKey: '' }]
+      form.setFieldsValue({
+        apiKey,
+        spreadsheetConfigs: sheetConfigs,
+        affiliateApiConfigs: affConfigs,
+      })
+    }
+
+    loadSettings()
+
+    // 当用户切换时（setCurrentUser 触发），重新加载对应用户的配置
+    window.addEventListener(CONFIG_UPDATED_EVENT, loadSettings)
+    return () => window.removeEventListener(CONFIG_UPDATED_EVENT, loadSettings)
   }, [form])
 
   const handleSave = async () => {

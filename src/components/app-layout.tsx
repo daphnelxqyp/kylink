@@ -15,7 +15,7 @@ import {
   LogoutOutlined,
 } from '@ant-design/icons'
 import { useSession, signOut } from 'next-auth/react'
-import { CONFIG_UPDATED_EVENT, getStoredApiKey } from '@/lib/api-client'
+import { CONFIG_UPDATED_EVENT, getStoredApiKey, setCurrentUser } from '@/lib/api-client'
 import { getAccessibleMenuKeys, type UserRole } from '@/lib/role-config'
 
 const { Header, Sider, Content } = Layout
@@ -52,6 +52,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const accessibleKeys = getAccessibleMenuKeys(userRole)
     return allMenuItems.filter(item => accessibleKeys.includes(item.key))
   }, [session?.user?.role])
+
+  // 当 session 可用时，设置当前用户标记（用于 localStorage 键名隔离）
+  useEffect(() => {
+    if (session?.user?.email) {
+      setCurrentUser(session.user.email)
+    }
+  }, [session?.user?.email])
 
   useEffect(() => {
     const refresh = () => setHasApiKey(!!getStoredApiKey())

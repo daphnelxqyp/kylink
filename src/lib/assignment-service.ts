@@ -209,12 +209,23 @@ async function processSingleAssignmentInternal(
 
     // 如果已存在分配，直接返回（幂等）
     if (existingAssignment) {
+      // 查询剩余可用库存（与新分配路径保持一致）
+      const remainingStock = await prisma.suffixStockItem.count({
+        where: {
+          userId,
+          campaignId,
+          status: 'available',
+          deletedAt: null,
+        },
+      })
+
       return {
         campaignId,
         action: 'APPLY',
         assignmentId: existingAssignment.id,
         finalUrlSuffix: existingAssignment.finalUrlSuffix,
         reason: '返回已存在的分配记录（幂等）',
+        availableStock: remainingStock,
       }
     }
 
