@@ -260,10 +260,16 @@ const JS_REDIRECT_PATTERNS: JsRedirectPattern[] = [
   
   // === 变量形式（常见混淆） ===
   {
-    name: 'var redirect',
-    // var url = "xxx"; location.href = url; 这种需要更复杂的解析，暂时支持简单形式
-    // 匹配: var redirectUrl = "url" 后面紧跟 location 赋值
+    name: 'var redirect (named)',
+    // 匹配: var redirectUrl = "url" 后面紧跟 location 赋值（变量名含 url/redirect/link/href）
     regex: /(?:var|let|const)\s+\w*(?:url|redirect|link|href)\w*\s*=\s*["'`]([^"'`]+)["'`]\s*;?\s*(?:window\.|document\.)?location/gi,
+    urlGroup: 1,
+  },
+  {
+    name: 'var redirect (any var + http url)',
+    // 匹配: var/let/const 任意变量 = "http(s)://url"; 后跟 location 使用
+    // 支持 collabglow 等联盟平台的变量间接重定向：var u = "https://..."; location.replace(u);
+    regex: /(?:var|let|const)\s+\w+\s*=\s*["'`](https?:\/\/[^"'`]+)["'`]\s*;?\s*(?:window\.|document\.|self\.|top\.|parent\.)?location/gi,
     urlGroup: 1,
   },
   

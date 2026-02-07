@@ -458,6 +458,9 @@ export async function POST(req: NextRequest) {
         : undefined,
     }
 
+    // 记录验证结果日志（用于排查）
+    console.log(`[affiliate-verify] Result: userId=${request.userId}, campaign=${request.campaignId}, success=${trackResult.success}, matched=${matched}, finalDomain=${finalDomain}, targetDomain=${request.targetDomain}, finalUrl=${trackResult.finalUrl?.slice(0, 100)}, error=${trackResult.errorMessage || 'none'}, proxy=${proxyInfo || 'direct'}, fallback=${proxyFallbackToDirectConnect || false}, duration=${Date.now() - startTime}ms`)
+
     return NextResponse.json<AffiliateVerifyResponse>(response, { status: 200 })
 
   } catch (error) {
