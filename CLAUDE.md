@@ -308,3 +308,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-07：修复设置页多用户 localStorage 数据串用问题：所有存储键名按用户 email 隔离（`key@email`），同一浏览器切换账号不再互相读到对方的配置。
 2026-02-07：为 Ubuntu 24.04 + jy.kyads.net 编写完整小白部署指南（13 步），涵盖 MySQL 8.0 + Node.js 20 + Nginx + HTTPS + systemd + crontab。
 2026-02-07：P0 修复三项：新增员工自助改密功能（PUT /v1/users/me/password + 设置页账户安全区域），移除右上角重复设置按钮，统一全项目密码策略为 ≥8 位。
+2026-02-07：P1 修复四项：设置页增加账户信息展示（邮箱/姓名/角色），移除禁用的"更新联盟链接"按钮及死代码，统一 lease 路由错误响应格式，统一 lease/batch 批量限制为 MAX_BATCH_SIZE。

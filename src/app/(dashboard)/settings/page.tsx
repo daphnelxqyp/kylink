@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { Alert, Button, Card, Divider, Form, Input, Progress, Space, Typography, message } from 'antd'
-import { CopyOutlined, LockOutlined, MinusOutlined, PlusOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { useEffect, useState } from 'react'
+import { Alert, Button, Card, Descriptions, Divider, Form, Input, Space, Tag, Typography, message } from 'antd'
+import { CopyOutlined, LockOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons'
 import { useSession } from 'next-auth/react'
 import {
   clearStoredApiKey,
@@ -23,33 +23,12 @@ import {
 
 const { Title, Text } = Typography
 
-/** 同步进度状态 */
-interface SyncProgress {
-  stage: 'init' | 'fetching' | 'saving' | 'done' | 'error'
-  current: number
-  total: number
-  message: string
-  networkName?: string
-}
-
-/** 每个联盟的同步状态 */
-interface AffiliateSyncState {
-  syncing: boolean
-  progress: SyncProgress | null
-}
-
 export default function SettingsPage() {
   const [form] = Form.useForm()
   const [passwordForm] = Form.useForm()
   const [saving, setSaving] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const { data: session } = useSession()
-  
-  // 联盟同步状态（按索引存储）
-  const [affiliateSyncStates, setAffiliateSyncStates] = useState<Record<number, AffiliateSyncState>>({})
-  
-  // 是否有任何同步正在进行
-  const isSyncing = Object.values(affiliateSyncStates).some(state => state.syncing)
 
   /**
    * 修改密码（调用 Session 认证接口，无需 API Key）
@@ -256,141 +235,35 @@ export default function SettingsPage() {
   /** 复制换链脚本（campaignto1.js） */
   const handleCopySwapScript = (index: number) => handleCopyScript(index, 'swap', '换链脚本')
 
-  /**
-   * 更新联盟链接 - 调用同步 API 并实时显示进度
-   */
-  const handleUpdateAffiliateLinks = useCallback(async (index: number) => {
-    const configs = form.getFieldValue('affiliateApiConfigs') || []
-    const config = configs[index]
-    
-    if (!config?.name || !config?.apiKey) {
-      message.warning('请先填写联盟简称和 API 密钥')
-      return
-    }
-
-    // 获取系统 API Key
-    const systemApiKey = form.getFieldValue('apiKey')
-    if (!systemApiKey || !isValidApiKey(systemApiKey)) {
-      message.warning('请先填写有效的系统 API Key')
-      return
-    }
-
-    // 检查是否正在同步
-    if (affiliateSyncStates[index]?.syncing) {
-      message.warning('该联盟正在同步中，请稍候...')
-      return
-    }
-
-    // 设置同步状态
-    setAffiliateSyncStates(prev => ({
-      ...prev,
-      [index]: {
-        syncing: true,
-        progress: {
-          stage: 'init',
-          current: 0,
-          total: 0,
-          message: '正在初始化...',
-          networkName: config.name,
-        },
-      },
-    }))
-
-    try {
-      // 调用同步 API（SSE 流）
-      const response = await fetch('/api/v1/affiliate-networks/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${systemApiKey}`,
-        },
-        body: JSON.stringify({
-          networkShortName: config.name,
-          apiKey: config.apiKey,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: '请求失败' }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
-      }
-
-      // 读取 SSE 流
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('无法读取响应流')
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        
-        // 解析 SSE 数据
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const progress: SyncProgress = JSON.parse(line.slice(6))
-              setAffiliateSyncStates(prev => ({
-                ...prev,
-                [index]: {
-                  syncing: progress.stage !== 'done' && progress.stage !== 'error',
-                  progress,
-                },
-              }))
-
-              // 同步完成或失败时显示消息
-              if (progress.stage === 'done') {
-                message.success(progress.message)
-              } else if (progress.stage === 'error') {
-                message.error(progress.message)
-              }
-            } catch {
-              // 忽略解析错误
-            }
-          }
-        }
-      }
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '同步失败'
-      message.error(errorMessage)
-      setAffiliateSyncStates(prev => ({
-        ...prev,
-        [index]: {
-          syncing: false,
-          progress: {
-            stage: 'error',
-            current: 0,
-            total: 0,
-            message: errorMessage,
-            networkName: config.name,
-          },
-        },
-      }))
-    }
-  }, [form, affiliateSyncStates])
-
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
       {/* ── 账户安全 ───────────────────────── */}
       <Card>
         <Title level={3} style={{ margin: 0 }}>
-          账户安全
+          账户信息
         </Title>
-        <Text type="secondary">
-          当前账号：{session?.user?.email || '加载中...'}
-          {session?.user?.role === 'ADMIN' && ' （管理员）'}
-        </Text>
+
+        <Descriptions
+          column={1}
+          size="small"
+          style={{ marginTop: 16, maxWidth: 400 }}
+        >
+          <Descriptions.Item label="邮箱">
+            {session?.user?.email || '加载中...'}
+          </Descriptions.Item>
+          <Descriptions.Item label="姓名">
+            {session?.user?.name || '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="角色">
+            {session?.user?.role === 'ADMIN'
+              ? <Tag color="blue">管理员</Tag>
+              : <Tag color="green">员工</Tag>}
+          </Descriptions.Item>
+        </Descriptions>
 
         <Divider style={{ margin: '16px 0' }} />
+
+        <Title level={5} style={{ margin: '0 0 16px' }}>修改密码</Title>
 
         <Form
           form={passwordForm}
@@ -552,73 +425,34 @@ export default function SettingsPage() {
                     联盟简称格式：RW1, LH1, PM1, LB1, CG1, CF1, BSH1...（前缀标识联盟类型，数字区分多个账号）
                   </Text>
                 </div>
-                {fields.map((field, index) => {
-                  const syncState = affiliateSyncStates[index]
-                  const isSyncingThis = syncState?.syncing || false
-                  const progress = syncState?.progress
-                  
-                  return (
-                    <div key={field.key} style={{ width: '100%' }}>
-                      <Space style={{ width: '100%' }} align="start">
-                        {/* 联盟简称输入框 */}
-                        <Form.Item
-                          name={[field.name, 'name']}
-                          style={{ width: 160, marginBottom: 0 }}
-                        >
-                          <Input placeholder="联盟简称" disabled={isSyncingThis} />
-                        </Form.Item>
-                        {/* 联盟 API 密钥输入框 */}
-                        <Form.Item
-                          name={[field.name, 'apiKey']}
-                          style={{ flex: 1, marginBottom: 0, minWidth: 300 }}
-                        >
-                          <Input.Password placeholder="联盟 API 密钥" disabled={isSyncingThis} />
-                        </Form.Item>
-                        <Button 
-                          onClick={() => handleUpdateAffiliateLinks(index)}
-                          loading={isSyncingThis}
-                          icon={progress?.stage === 'done' ? <CheckCircleOutlined /> : <SyncOutlined spin={isSyncingThis} />}
-                          type={progress?.stage === 'done' ? 'default' : 'primary'}
-                          disabled
-                          title="功能暂未启用"
-                        >
-                          更新联盟链接
-                        </Button>
-                        <Button
-                          icon={<MinusOutlined />}
-                          onClick={() => remove(field.name)}
-                          disabled={fields.length === 1 || isSyncingThis}
-                        />
-                      </Space>
-                      
-                      {/* 同步进度条 */}
-                      {progress && progress.stage !== 'error' && (
-                        <div style={{ marginTop: 8, paddingLeft: 160 + 8 }}>
-                          <Progress 
-                            percent={progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0}
-                            status={progress.stage === 'done' ? 'success' : 'active'}
-                            size="small"
-                            format={() => progress.message}
-                            style={{ maxWidth: 500 }}
-                          />
-                        </div>
-                      )}
-                      
-                      {/* 错误提示 */}
-                      {progress?.stage === 'error' && (
-                        <div style={{ marginTop: 8, paddingLeft: 160 + 8 }}>
-                          <Text type="danger">{progress.message}</Text>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                {fields.map((field) => (
+                  <Space key={field.key} style={{ width: '100%' }} align="start">
+                    {/* 联盟简称输入框 */}
+                    <Form.Item
+                      name={[field.name, 'name']}
+                      style={{ width: 160, marginBottom: 0 }}
+                    >
+                      <Input placeholder="联盟简称" />
+                    </Form.Item>
+                    {/* 联盟 API 密钥输入框 */}
+                    <Form.Item
+                      name={[field.name, 'apiKey']}
+                      style={{ flex: 1, marginBottom: 0, minWidth: 300 }}
+                    >
+                      <Input.Password placeholder="联盟 API 密钥" />
+                    </Form.Item>
+                    <Button
+                      icon={<MinusOutlined />}
+                      onClick={() => remove(field.name)}
+                      disabled={fields.length === 1}
+                    />
+                  </Space>
+                ))}
                 <Button
                   type="dashed"
                   icon={<PlusOutlined />}
                   onClick={() => add({ name: '', apiKey: '' })}
                   style={{ width: '100%' }}
-                  disabled={isSyncing}
                 >
                   添加联盟链接 API 配置
                 </Button>
@@ -627,14 +461,14 @@ export default function SettingsPage() {
           </Form.List>
 
           <Space style={{ marginTop: 24 }}>
-            <Button type="primary" onClick={handleSave} loading={saving} disabled={isSyncing}>
+            <Button type="primary" onClick={handleSave} loading={saving}>
               保存配置
             </Button>
-            <Button onClick={handleCopyApiKey} disabled={isSyncing}>复制 API Key</Button>
-            <Button onClick={handleTestConnection} loading={saving} disabled={isSyncing}>
+            <Button onClick={handleCopyApiKey}>复制 API Key</Button>
+            <Button onClick={handleTestConnection} loading={saving}>
               测试连接
             </Button>
-            <Button onClick={handleClear} disabled={isSyncing}>清空本地配置</Button>
+            <Button onClick={handleClear}>清空本地配置</Button>
           </Space>
         </Form>
       </Card>

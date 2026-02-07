@@ -6,7 +6,7 @@
  * 核心逻辑：
  * - 每个 campaign 独立判定，互不影响
  * - 部分失败不影响其他 campaign 的结果返回
- * - 单次最多 100 条
+ * - 单次最多 MAX_BATCH_SIZE 条（默认 500，可通过环境变量配置）
  */
 
 import { NextRequest } from 'next/server'
@@ -22,6 +22,9 @@ import {
   errorResponse,
   validateCycleMinutes,
 } from '@/lib/utils'
+
+/** 批量大小限制（与 report/batch 保持一致） */
+const MAX_BATCH_SIZE = parseInt(process.env.MAX_BATCH_SIZE || '500', 10)
 
 // 批量请求体类型
 interface BatchLeaseRequest {
@@ -78,8 +81,8 @@ export async function POST(request: NextRequest) {
     return errorResponse('VALIDATION_ERROR', 'campaigns 不能为空', 422)
   }
 
-  if (data.campaigns.length > 100) {
-    return errorResponse('VALIDATION_ERROR', 'campaigns 单次最多 100 条', 422)
+  if (data.campaigns.length > MAX_BATCH_SIZE) {
+    return errorResponse('VALIDATION_ERROR', `campaigns 单次最多 ${MAX_BATCH_SIZE} 条`, 422)
   }
 
   // 5. 验证 cycleMinutes 范围

@@ -96,26 +96,11 @@ export async function POST(request: NextRequest) {
     // 6. 根据结果返回适当的 HTTP 响应
     // 处理错误情况（有 code 字段表示错误）
     if (result.code) {
-      // 根据错误类型返回不同的 HTTP 状态码
       switch (result.code) {
         case 'PENDING_IMPORT':
-          return Response.json(
-            {
-              success: false,
-              code: result.code,
-              message: result.message,
-            },
-            { status: 202 }
-          )
+          return errorResponse('PENDING_IMPORT', result.message || '等待导入', 202)
         case 'NO_STOCK':
-          return Response.json(
-            {
-              success: false,
-              code: result.code,
-              message: '库存不足，请稍后重试',
-            },
-            { status: 409 }
-          )
+          return errorResponse('NO_STOCK', '库存不足，请稍后重试', 409)
         case 'INTERNAL_ERROR':
         default:
           return errorResponse('INTERNAL_ERROR', '服务内部错误，请稍后重试', 500)
