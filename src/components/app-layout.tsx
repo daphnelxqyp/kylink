@@ -119,12 +119,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             ) : (
               <Tag color="red">API Key 未配置</Tag>
             )}
-            <Button
-              icon={<SettingOutlined />}
-              onClick={() => router.push('/settings')}
-            >
-              设置
-            </Button>
+            {session?.user?.role !== 'ADMIN' && (
+              <Button
+                icon={<SettingOutlined />}
+                onClick={() => router.push('/settings')}
+              >
+                设置
+              </Button>
+            )}
             <Button
               icon={<LogoutOutlined />}
               onClick={() => signOut({ callbackUrl: '/login' })}

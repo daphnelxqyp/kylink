@@ -209,3 +209,46 @@ export interface AffiliateLinkActionResponse {
   message?: string
 }
 
+// ==================== 员工概览模块类型 ====================
+
+/**
+ * 最近换链记录项
+ */
+export interface RecentAssignmentItem {
+  id: string
+  campaignId: string
+  campaignName: string | null
+  finalUrlSuffix: string
+  assignedAt: string
+  writeSuccess: boolean | null
+}
+
+/**
+ * 员工概览统计响应
+ */
+export interface EmployeeDashboardStats {
+  success: boolean
+  /** 广告系列总数 */
+  totalCampaigns: number
+  /** 今日换链次数 */
+  todayAssignments: number
+  /** 今日写入成功率（百分比，如 98.5；无数据时为 null） */
+  writeSuccessRate: number | null
+  /** 今日回传总数 */
+  todayWriteTotal: number
+  /** 今日写入成功数 */
+  todayWriteSuccess: number
+  /** 低库存广告系列数 */
+  lowStockCampaigns: number
+  /** 可用库存总数 */
+  stockAvailable: number
+  /** 已消耗库存总数 */
+  stockConsumed: number
+  /** 总观测点击数 */
+  totalObservedClicks: number
+  /** 已换链点击数 */
+  totalAppliedClicks: number
+  /** 最近换链记录 Top 10 */
+  recentAssignments: RecentAssignmentItem[]
+}
+

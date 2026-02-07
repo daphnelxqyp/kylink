@@ -11,7 +11,7 @@ export type UserRole = 'ADMIN' | 'USER'
  */
 export const ROLE_MENU_ACCESS: Record<UserRole, string[]> = {
   USER: ['/', '/links', '/stock', '/settings'],
-  ADMIN: ['/', '/links', '/stock', '/alerts', '/jobs', '/proxy-providers', '/users', '/settings'],
+  ADMIN: ['/', '/alerts', '/jobs', '/proxy-providers', '/users'],
 }
 
 /**
