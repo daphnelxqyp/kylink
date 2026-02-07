@@ -2,10 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { Alert, Button } from 'antd'
+import { useSession } from 'next-auth/react'
 import { CONFIG_UPDATED_EVENT, getStoredApiKey } from '@/lib/api-client'
 
+/**
+ * API Key 未配置提醒（仅对非管理员显示）
+ *
+ * 管理员后台无需配置 API Key，所以不展示此提醒。
+ */
 export default function NoApiKeyAlert() {
-  const [hasApiKey, setHasApiKey] = useState(false)
+  const [hasApiKey, setHasApiKey] = useState(true) // 默认 true 避免闪烁
+  const { data: session } = useSession()
 
   useEffect(() => {
     const refresh = () => setHasApiKey(!!getStoredApiKey())
@@ -19,6 +26,9 @@ export default function NoApiKeyAlert() {
       window.removeEventListener(CONFIG_UPDATED_EVENT, refresh)
     }
   }, [])
+
+  // 管理员无需 API Key，不显示提醒
+  if (session?.user?.role === 'ADMIN') return null
 
   if (hasApiKey) return null
 

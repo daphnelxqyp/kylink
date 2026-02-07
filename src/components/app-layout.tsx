@@ -121,10 +121,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {session.user.role === 'ADMIN' && <Tag color="blue">管理员</Tag>}
               </>
             )}
-            {hasApiKey ? (
-              <Tag color="green">API Key 已配置</Tag>
-            ) : (
-              <Tag color="red">API Key 未配置</Tag>
+            {session?.user?.role !== 'ADMIN' && (
+              hasApiKey
+                ? <Tag color="green">API Key 已配置</Tag>
+                : <Tag color="red">API Key 未配置</Tag>
             )}
             <Button
               icon={<LogoutOutlined />}
