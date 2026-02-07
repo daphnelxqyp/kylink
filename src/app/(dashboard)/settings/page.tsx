@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Alert, Button, Card, Form, Input, Progress, Space, Typography, message } from 'antd'
-import { CopyOutlined, MinusOutlined, PlusOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Divider, Form, Input, Progress, Space, Typography, message } from 'antd'
+import { CopyOutlined, LockOutlined, MinusOutlined, PlusOutlined, SyncOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { useSession } from 'next-auth/react'
 import {
   clearStoredApiKey,
   CONFIG_UPDATED_EVENT,
@@ -39,13 +40,50 @@ interface AffiliateSyncState {
 
 export default function SettingsPage() {
   const [form] = Form.useForm()
+  const [passwordForm] = Form.useForm()
   const [saving, setSaving] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
+  const { data: session } = useSession()
   
   // 联盟同步状态（按索引存储）
   const [affiliateSyncStates, setAffiliateSyncStates] = useState<Record<number, AffiliateSyncState>>({})
   
   // 是否有任何同步正在进行
   const isSyncing = Object.values(affiliateSyncStates).some(state => state.syncing)
+
+  /**
+   * 修改密码（调用 Session 认证接口，无需 API Key）
+   */
+  const handleChangePassword = async () => {
+    try {
+      const values = await passwordForm.validateFields()
+      setChangingPassword(true)
+
+      const res = await fetch('/api/v1/users/me/password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oldPassword: values.oldPassword,
+          newPassword: values.newPassword,
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || data?.success === false) {
+        const errMsg = typeof data?.error === 'string'
+          ? data.error
+          : data?.error?.message || '修改失败'
+        throw new Error(errMsg)
+      }
+
+      message.success('密码修改成功')
+      passwordForm.resetFields()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '修改密码失败')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   useEffect(() => {
     /** 从 localStorage 加载当前用户的配置到表单 */
@@ -342,11 +380,86 @@ export default function SettingsPage() {
 
   return (
     <Space direction="vertical" size={24} style={{ width: '100%' }}>
+      {/* ── 账户安全 ───────────────────────── */}
       <Card>
         <Title level={3} style={{ margin: 0 }}>
-          基础配置
+          账户安全
         </Title>
-        <Text type="secondary">本页信息仅保存在浏览器本地，不会上传到服务器。</Text>
+        <Text type="secondary">
+          当前账号：{session?.user?.email || '加载中...'}
+          {session?.user?.role === 'ADMIN' && ' （管理员）'}
+        </Text>
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        <Form
+          form={passwordForm}
+          layout="vertical"
+          style={{ maxWidth: 400 }}
+        >
+          <Form.Item
+            label="当前密码"
+            name="oldPassword"
+            rules={[{ required: true, message: '请输入当前密码' }]}
+          >
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="请输入当前密码"
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="新密码"
+            name="newPassword"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 8, message: '密码至少 8 位' },
+            ]}
+          >
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="至少 8 位"
+            />
+          </Form.Item>
+
+          <Form.Item
+            label="确认新密码"
+            name="confirmPassword"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: '请再次输入新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('newPassword') === value) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(new Error('两次输入的密码不一致'))
+                },
+              }),
+            ]}
+          >
+            <Input.Password
+              prefix={<LockOutlined />}
+              placeholder="再次输入新密码"
+            />
+          </Form.Item>
+
+          <Button
+            type="primary"
+            onClick={handleChangePassword}
+            loading={changingPassword}
+          >
+            修改密码
+          </Button>
+        </Form>
+      </Card>
+
+      {/* ── 工作配置 ───────────────────────── */}
+      <Card>
+        <Title level={3} style={{ margin: 0 }}>
+          工作配置
+        </Title>
+        <Text type="secondary">本区域信息仅保存在浏览器本地，不会上传到服务器。</Text>
       </Card>
 
       <Alert

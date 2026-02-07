@@ -53,8 +53,8 @@ async function main() {
   const forceReset = process.argv.includes('--reset')
 
   // 验证密码强度
-  if (password.length < 6) {
-    console.error('❌ 密码至少需要 6 位')
+  if (password.length < 8) {
+    console.error('❌ 密码至少需要 8 位')
     process.exit(1)
   }
 

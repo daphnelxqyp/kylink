@@ -95,8 +95,8 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 
   // 验证密码（如果提供了密码）
   if (payload.password !== undefined && payload.password.trim() !== '') {
-    if (payload.password.length < 6) {
-      return errorResponse('VALIDATION_ERROR', 'password 至少需要 6 位', 422)
+    if (payload.password.length < 8) {
+      return errorResponse('VALIDATION_ERROR', 'password 至少需要 8 位', 422)
     }
   }
 

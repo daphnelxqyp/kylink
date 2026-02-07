@@ -307,3 +307,4 @@ Suffix 生成逻辑位于 `src/lib/suffix-generator.ts`：
 2026-02-07：修复 collabglow 联盟链接验证失败问题：追踪器新增变量间接引用 JS 重定向模式（`var u = "url"; location.replace(u)`），添加验证结果日志。
 2026-02-07：修复设置页多用户 localStorage 数据串用问题：所有存储键名按用户 email 隔离（`key@email`），同一浏览器切换账号不再互相读到对方的配置。
 2026-02-07：为 Ubuntu 24.04 + jy.kyads.net 编写完整小白部署指南（13 步），涵盖 MySQL 8.0 + Node.js 20 + Nginx + HTTPS + systemd + crontab。
+2026-02-07：P0 修复三项：新增员工自助改密功能（PUT /v1/users/me/password + 设置页账户安全区域），移除右上角重复设置按钮，统一全项目密码策略为 ≥8 位。

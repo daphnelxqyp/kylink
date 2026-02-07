@@ -101,8 +101,8 @@ export async function POST(request: NextRequest) {
     return errorResponse('VALIDATION_ERROR', 'password 不能为空', 422)
   }
 
-  if (password.length < 6) {
-    return errorResponse('VALIDATION_ERROR', 'password 至少需要 6 位', 422)
+  if (password.length < 8) {
+    return errorResponse('VALIDATION_ERROR', 'password 至少需要 8 位', 422)
   }
 
   if (providedApiKey && !validateApiKeyFormat(providedApiKey)) {
